@@ -9,7 +9,7 @@ SYSTEM_PROMPT = (
     "원문에 없는 내용을 만들지 말고, 핵심 내용 중심으로 간결하게 요약하세요."
 )
 
-
+# 음성 데이터를 요약해주는 로직
 class SummaryService:
     def __init__(self) -> None:
         settings = get_settings()

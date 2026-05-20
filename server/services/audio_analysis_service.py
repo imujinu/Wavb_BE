@@ -11,6 +11,7 @@ from fastapi import HTTPException, status
 class AudioAnalysis:
     duration_seconds: float
 
+# ffmpeg를 사용해 오디오 길이 추출
 
 class AudioAnalysisService:
     def __init__(self, ffmpeg_path: str | None = None) -> None:

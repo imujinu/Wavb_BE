@@ -4,7 +4,6 @@ aiosignal==1.4.0
 annotated-doc==0.0.4
 annotated-types==0.7.0
 anyio==4.13.0
-asttokens @ file:///home/conda/feedstock_root/build_artifacts/asttokens_1763409923949/work
 attrs==26.1.0
 bcrypt==5.0.0
 beautifulsoup4==4.14.3
@@ -14,14 +13,9 @@ certifi==2026.4.22
 charset-normalizer==3.4.7
 chromadb==1.5.9
 click==8.4.0
-colorama @ file:///home/conda/feedstock_root/build_artifacts/colorama_1733218098505/work
-comm @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_comm_1753453984/work
 dataclasses-json==0.6.7
-debugpy @ file:///D:/bld/bld/rattler-build_debugpy_1769745017/work
-decorator @ file:///home/conda/feedstock_root/build_artifacts/decorator_1779115150916/work
 distro==1.9.0
 durationpy==0.10
-executing @ file:///home/conda/feedstock_root/build_artifacts/executing_1756729339227/work
 filelock==3.29.0
 flatbuffers==25.12.19
 frozenlist==1.8.0
@@ -38,17 +32,11 @@ httpx-sse==0.4.3
 huggingface_hub==1.15.0
 idna==3.15
 importlib_resources==7.1.0
-ipykernel @ file:///D:/bld/bld/rattler-build_ipykernel_1770566174/work
-ipython @ file:///D:/bld/bld/rattler-build_ipython_1777038425/work
-ipython_pygments_lexers @ file:///home/conda/feedstock_root/build_artifacts/ipython_pygments_lexers_1737123620466/work
-jedi @ file:///home/conda/feedstock_root/build_artifacts/jedi_1733300866624/work
 jiter==0.15.0
 jsonpatch==1.33
 jsonpointer==3.1.1
 jsonschema==4.26.0
 jsonschema-specifications==2025.9.1
-jupyter_client @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_jupyter_client_1767954655/work
-jupyter_core @ file:///D:/bld/bld/rattler-build_jupyter_core_1760643889/work
 kubernetes==35.0.0
 langchain==1.3.1
 langchain-classic==1.0.7
@@ -64,12 +52,10 @@ langgraph-sdk==0.3.14
 langsmith==0.8.5
 markdown-it-py==4.2.0
 marshmallow==3.26.2
-matplotlib-inline @ file:///home/conda/feedstock_root/build_artifacts/matplotlib-inline_1778264321245/work
 mdurl==0.1.2
 mmh3==5.2.1
 multidict==6.7.1
 mypy_extensions==1.1.0
-nest_asyncio @ file:///home/conda/feedstock_root/build_artifacts/nest-asyncio_1733325553580/work
 numpy==2.4.6
 oauthlib==3.3.1
 onnxruntime==1.26.0
@@ -84,26 +70,17 @@ orjson==3.11.9
 ormsgpack==1.12.2
 overrides==7.7.0
 packaging==26.0
-parso @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_parso_1777722955/work
-platformdirs @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_platformdirs_1775741140/work
-prompt_toolkit @ file:///home/conda/feedstock_root/build_artifacts/prompt-toolkit_1756321756983/work
 propcache==0.5.2
 protobuf==6.33.6
-psutil @ file:///D:/bld/bld/rattler-build_psutil_1769678166/work
-pure_eval @ file:///home/conda/feedstock_root/build_artifacts/pure_eval_1733569405015/work
 pybase64==1.4.3
 pydantic==2.13.4
 pydantic-settings==2.14.1
 pydantic_core==2.46.4
-Pygments @ file:///home/conda/feedstock_root/build_artifacts/pygments_1774796700044/work
 pypdf==6.11.0
 PyPika==0.51.1
 pyproject_hooks==1.2.0
-python-dateutil @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_python-dateutil_1751104122/work
 python-dotenv==1.2.2
-pywin32 @ file:///D:/bld/bld/rattler-build_pywin32_1779222951/work
 PyYAML==6.0.3
-pyzmq @ file:///D:/bld/bld/rattler-build_pyzmq_1771716977/work
 referencing==0.37.0
 regex==2026.5.9
 requests==2.34.2
@@ -112,26 +89,20 @@ requests-toolbelt==1.0.0
 rich==15.0.0
 rpds-py==0.30.0
 shellingham==1.5.4
-six @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_six_1753199211/work
 sniffio==1.3.1
 soupsieve==2.8.3
 SQLAlchemy==2.0.49
-stack_data @ file:///home/conda/feedstock_root/build_artifacts/stack_data_1733569443808/work
 tenacity==9.1.4
 tiktoken==0.13.0
 tokenizers==0.23.1
-tornado @ file:///D:/bld/tornado_1774357957486/work
 tqdm==4.67.3
-traitlets @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_traitlets_1778074251/work
 typer==0.25.1
 typing-inspect==0.9.0
 typing-inspection==0.4.2
-typing_extensions @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_typing_extensions_1756220668/work
 urllib3==2.7.0
 uuid_utils==0.16.0
 uvicorn==0.47.0
 watchfiles==1.2.0
-wcwidth @ file:///home/conda/feedstock_root/build_artifacts/wcwidth_1777744409267/work
 websocket-client==1.9.0
 websockets==16.0
 xxhash==3.7.0
