@@ -1,0 +1,25 @@
+[project]
+name = "recordoc-be"
+version = "0.1.0"
+description = "FastAPI backend for VoiceDoc audio transcription and summarization."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115.0",
+    "openai>=1.0.0",
+    "pydantic-settings>=2.0.0",
+    "python-multipart>=0.0.9",
+    "uvicorn[standard]>=0.30.0",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.27.0",
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+pythonpath = ["."]
+testpaths = ["tests"]
