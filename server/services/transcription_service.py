@@ -25,14 +25,23 @@ class TranscriptionSegment:
 
 
 @dataclass(frozen=True)
+class TranscriptionResult:
+    text: str
+    duration_seconds: float | None
+    stt_model: str
+    segments: list[TranscriptionSegment]
+
+
+@dataclass(frozen=True)
 class ChunkTranscription:
     index: int
     text: str
     leading_overlap_seconds: float
+    start_seconds: float
+    duration_seconds: float
     segments: list[TranscriptionSegment]
 
-#todo : Exception handling 공통화하기
-# 오디오 -> 스크립트로 변환 서비스
+
 class TranscriptionService:
     def __init__(self) -> None:
         settings = get_settings()
@@ -52,6 +61,11 @@ class TranscriptionService:
         self._target_chunk_max_mb = settings.audio_target_chunk_max_mb
 
     async def transcribe(self, file: UploadFile) -> str:
+        result = await self.transcribe_with_segments(file)
+        return result.text
+
+    # Transcribe audio and keep timing data for transcript/segment persistence.
+    async def transcribe_with_segments(self, file: UploadFile) -> TranscriptionResult:
         suffix = Path(file.filename or "").suffix or ".audio"
 
         try:
@@ -59,27 +73,24 @@ class TranscriptionService:
                 input_path = Path(temp_dir_name) / f"input{suffix}"
                 await self._save_upload(file, input_path)
                 analysis = self._audio_analysis_service.analyze(input_path)
-                # 청킹 단위를 min~max 넘어서면 범위 안으로 조정
                 chunk_seconds = calculate_chunk_seconds(
                     duration_seconds=analysis.duration_seconds,
                     concurrency=self._transcription_concurrency,
                     min_seconds=self._chunk_min_seconds,
                     max_seconds=self._chunk_max_seconds,
                 )
-                # 위에서 정한 청킹 사이즈만큼 영상을 나눔
                 chunk_plans = build_chunk_plan(
                     duration_seconds=analysis.duration_seconds,
                     chunk_seconds=chunk_seconds,
                     overlap_seconds=self._chunk_overlap_seconds,
                 )
-                # 실제로 청크 생성
                 chunks = self._audio_chunking_service.create_chunks(
                     input_path=input_path,
                     output_dir=Path(temp_dir_name) / "chunks",
                     plans=chunk_plans,
                     target_max_mb=self._target_chunk_max_mb,
                 )
-                transcription = await self._transcribe_chunks(chunks)
+                transcriptions = await self._collect_chunk_transcriptions(chunks)
         except HTTPException:
             raise
         except APIError as exc:
@@ -95,12 +106,24 @@ class TranscriptionService:
                 detail="Audio transcription failed.",
             ) from exc
 
-        return str(transcription).strip()
+        return TranscriptionResult(
+            text=self._merge_chunk_transcriptions(transcriptions).strip(),
+            duration_seconds=analysis.duration_seconds,
+            stt_model=self._model,
+            segments=self._merge_transcription_segments(transcriptions),
+        )
 
-# chunck를 실제 script로 변환
     async def _transcribe_chunks(self, chunks: list[AudioChunk]) -> str:
+        transcriptions = await self._collect_chunk_transcriptions(chunks)
+        return self._merge_chunk_transcriptions(transcriptions)
+
+    
+    async def _collect_chunk_transcriptions(
+        self,
+        chunks: list[AudioChunk],
+    ) -> list[ChunkTranscription]:
         if not chunks:
-            return ""
+            return []
 
         semaphore = asyncio.Semaphore(self._transcription_concurrency)
         tasks = [
@@ -109,18 +132,12 @@ class TranscriptionService:
         ]
 
         try:
-            transcripts = await asyncio.gather(*tasks)
+            return await asyncio.gather(*tasks)
         except Exception:
             for task in tasks:
                 if not task.done():
                     task.cancel()
             raise
-
-        return "\n".join(
-            transcript
-            for transcript in self._merge_chunk_transcriptions(transcripts)
-            if transcript
-        )
 
     async def _transcribe_chunk_with_retry(
         self,
@@ -142,7 +159,6 @@ class TranscriptionService:
             detail=f"Audio transcription provider failed for chunk {chunk.index}.",
         ) from last_exception
 
-    # 실질적으로 비동기 처리 요청을 실시하는 부분
     async def _request_chunk_transcription(self, chunk: AudioChunk) -> Any:
         with chunk.path.open("rb") as audio_file:
             return await self._client.audio.transcriptions.create(
@@ -151,8 +167,7 @@ class TranscriptionService:
                 language="ko",
                 response_format="verbose_json",
             )
-    # llm에게 받은 결과를 다시 클래스로 변환하는 과정
-# llm이 청킹 단위로 텍스트를 반환하는데, 이 텍스트를 다시 합치는 과정에서 청킹 단위로 반환된 텍스트들을 다시 합치는 과정
+
     def _parse_chunk_transcription(
         self,
         chunk: AudioChunk,
@@ -177,14 +192,15 @@ class TranscriptionService:
             index=chunk.index,
             text=text,
             leading_overlap_seconds=chunk.leading_overlap_seconds,
+            start_seconds=chunk.start_seconds,
+            duration_seconds=chunk.duration_seconds,
             segments=segments,
         )
-    #  chunk 단위로 변환된 텍스트들을 다시 합치는 과정
-    # 청킹 단위로 반환된 텍스트들을 다시 합치는 과정에서, 청킹 단위로 반환된 텍스트들이 겹치는 부분이 있을 수 있기 때문에, 겹치는 부분을 제거하면서 텍스트를 합치는 과정
+
     def _merge_chunk_transcriptions(
         self,
         transcripts: list[ChunkTranscription],
-    ) -> list[str]:
+    ) -> str:
         merged: list[str] = []
 
         for transcript in sorted(transcripts, key=lambda item: item.index):
@@ -197,9 +213,50 @@ class TranscriptionService:
             if transcript.text:
                 merged.append(transcript.text)
 
-        return merged
+        return "\n".join(transcript for transcript in merged if transcript)
 
-    
+    def _merge_transcription_segments(
+        self,
+        transcripts: list[ChunkTranscription],
+    ) -> list[TranscriptionSegment]:
+        segments: list[TranscriptionSegment] = []
+
+        for transcript in sorted(transcripts, key=lambda item: item.index):
+            if not transcript.segments and transcript.text:
+                segments.append(
+                    TranscriptionSegment(
+                        text=transcript.text,
+                        start_seconds=transcript.start_seconds,
+                        end_seconds=transcript.start_seconds + transcript.duration_seconds,
+                    )
+                )
+                continue
+
+            for segment in transcript.segments:
+                if not segment.text:
+                    continue
+                if (
+                    transcript.leading_overlap_seconds > 0
+                    and segment.end_seconds is not None
+                    and segment.end_seconds <= transcript.leading_overlap_seconds
+                ):
+                    continue
+                segments.append(
+                    TranscriptionSegment(
+                        text=segment.text,
+                        start_seconds=self._offset_seconds(
+                            transcript.start_seconds,
+                            segment.start_seconds,
+                        ),
+                        end_seconds=self._offset_seconds(
+                            transcript.start_seconds,
+                            segment.end_seconds,
+                        ),
+                    )
+                )
+
+        return segments
+
     def _merge_segments(self, transcript: ChunkTranscription) -> str:
         texts: list[str] = []
 
@@ -220,6 +277,11 @@ class TranscriptionService:
         if isinstance(response, dict):
             return response.get(key, default)
         return getattr(response, key, default)
+
+    def _offset_seconds(self, base_seconds: float, value: float | None) -> float | None:
+        if value is None:
+            return None
+        return base_seconds + value
 
     def _to_float_or_none(self, value: Any) -> float | None:
         if value is None:

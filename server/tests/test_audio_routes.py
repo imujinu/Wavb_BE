@@ -73,3 +73,49 @@ def test_audio_summarize_rejects_empty_transcript(monkeypatch) -> None:
 
     assert response.status_code == 422
     assert response.json()["detail"] == "Audio transcription result is empty."
+
+
+def test_audio_transcripts_persists_stt_flow(monkeypatch) -> None:
+    expected_transcript_id = "11111111-1111-1111-1111-111111111111"
+
+    class FakeIngestionResult:
+        transcript_id = expected_transcript_id
+        transcript = "회의 내용을 저장했습니다."
+        duration_seconds = 5.5
+        stt_model = "whisper-1"
+        segment_count = 1
+
+    class FakeTranscriptIngestionService:
+        def __init__(self, repository):
+            self.repository = repository
+
+        async def ingest_upload(self, file, domain_type, title=None, user_id=None):
+            assert domain_type == "meeting"
+            assert title == "주간 회의"
+            return FakeIngestionResult()
+
+    app.dependency_overrides[audio.get_rag_repository] = lambda: object()
+    monkeypatch.setattr(
+        audio,
+        "TranscriptIngestionService",
+        FakeTranscriptIngestionService,
+    )
+
+    try:
+        response = client.post(
+            "/audio/transcripts",
+            data={"domain_type": "meeting", "title": "주간 회의"},
+            files={"file": ("meeting.mp3", b"fake audio", "audio/mpeg")},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "transcript_id": expected_transcript_id,
+        "transcript": "회의 내용을 저장했습니다.",
+        "duration_seconds": 5.5,
+        "stt_model": "whisper-1",
+        "segment_count": 1,
+        "status": "completed",
+    }
