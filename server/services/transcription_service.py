@@ -1,5 +1,8 @@
+import asyncio
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from fastapi import HTTPException, UploadFile, status
 from openai import APIError, AsyncOpenAI
@@ -12,6 +15,21 @@ from services.audio_chunking import (
     calculate_chunk_seconds,
 )
 from settings import get_settings
+
+
+@dataclass(frozen=True)
+class TranscriptionSegment:
+    text: str
+    start_seconds: float | None
+    end_seconds: float | None
+
+
+@dataclass(frozen=True)
+class ChunkTranscription:
+    index: int
+    text: str
+    leading_overlap_seconds: float
+    segments: list[TranscriptionSegment]
 
 #todo : Exception handling 공통화하기
 # 오디오 -> 스크립트로 변환 서비스
@@ -81,23 +99,135 @@ class TranscriptionService:
 
 # chunck를 실제 script로 변환
     async def _transcribe_chunks(self, chunks: list[AudioChunk]) -> str:
-        transcripts: list[tuple[int, str]] = []
+        if not chunks:
+            return ""
 
-        for chunk in chunks:
-            with chunk.path.open("rb") as audio_file:
-                transcription = await self._client.audio.transcriptions.create(
-                    model=self._model,
-                    file=audio_file,
-                    language="ko",
-                    response_format="text",
-                )
-            transcripts.append((chunk.index, str(transcription).strip()))
+        semaphore = asyncio.Semaphore(self._transcription_concurrency)
+        tasks = [
+            asyncio.create_task(self._transcribe_chunk_with_retry(chunk, semaphore))
+            for chunk in chunks
+        ]
+
+        try:
+            transcripts = await asyncio.gather(*tasks)
+        except Exception:
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            raise
 
         return "\n".join(
             transcript
-            for _, transcript in sorted(transcripts, key=lambda item: item[0])
+            for transcript in self._merge_chunk_transcriptions(transcripts)
             if transcript
         )
+
+    async def _transcribe_chunk_with_retry(
+        self,
+        chunk: AudioChunk,
+        semaphore: asyncio.Semaphore,
+    ) -> ChunkTranscription:
+        last_exception: Exception | None = None
+
+        for _ in range(2):
+            try:
+                async with semaphore:
+                    response = await self._request_chunk_transcription(chunk)
+                return self._parse_chunk_transcription(chunk, response)
+            except Exception as exc:
+                last_exception = exc
+
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Audio transcription provider failed for chunk {chunk.index}.",
+        ) from last_exception
+
+    # 실질적으로 비동기 처리 요청을 실시하는 부분
+    async def _request_chunk_transcription(self, chunk: AudioChunk) -> Any:
+        with chunk.path.open("rb") as audio_file:
+            return await self._client.audio.transcriptions.create(
+                model=self._model,
+                file=audio_file,
+                language="ko",
+                response_format="verbose_json",
+            )
+    # llm에게 받은 결과를 다시 클래스로 변환하는 과정
+# llm이 청킹 단위로 텍스트를 반환하는데, 이 텍스트를 다시 합치는 과정에서 청킹 단위로 반환된 텍스트들을 다시 합치는 과정
+    def _parse_chunk_transcription(
+        self,
+        chunk: AudioChunk,
+        response: Any,
+    ) -> ChunkTranscription:
+        text = str(self._get_response_value(response, "text", "") or "").strip()
+        raw_segments = self._get_response_value(response, "segments", []) or []
+        segments = [
+            TranscriptionSegment(
+                text=str(self._get_response_value(segment, "text", "") or "").strip(),
+                start_seconds=self._to_float_or_none(
+                    self._get_response_value(segment, "start", None)
+                ),
+                end_seconds=self._to_float_or_none(
+                    self._get_response_value(segment, "end", None)
+                ),
+            )
+            for segment in raw_segments
+        ]
+
+        return ChunkTranscription(
+            index=chunk.index,
+            text=text,
+            leading_overlap_seconds=chunk.leading_overlap_seconds,
+            segments=segments,
+        )
+    #  chunk 단위로 변환된 텍스트들을 다시 합치는 과정
+    # 청킹 단위로 반환된 텍스트들을 다시 합치는 과정에서, 청킹 단위로 반환된 텍스트들이 겹치는 부분이 있을 수 있기 때문에, 겹치는 부분을 제거하면서 텍스트를 합치는 과정
+    def _merge_chunk_transcriptions(
+        self,
+        transcripts: list[ChunkTranscription],
+    ) -> list[str]:
+        merged: list[str] = []
+
+        for transcript in sorted(transcripts, key=lambda item: item.index):
+            if transcript.segments:
+                segment_text = self._merge_segments(transcript)
+                if segment_text:
+                    merged.append(segment_text)
+                continue
+
+            if transcript.text:
+                merged.append(transcript.text)
+
+        return merged
+
+    
+    def _merge_segments(self, transcript: ChunkTranscription) -> str:
+        texts: list[str] = []
+
+        for segment in transcript.segments:
+            if not segment.text:
+                continue
+            if (
+                transcript.leading_overlap_seconds > 0
+                and segment.end_seconds is not None
+                and segment.end_seconds <= transcript.leading_overlap_seconds
+            ):
+                continue
+            texts.append(segment.text)
+
+        return " ".join(texts).strip()
+
+    def _get_response_value(self, response: Any, key: str, default: Any) -> Any:
+        if isinstance(response, dict):
+            return response.get(key, default)
+        return getattr(response, key, default)
+
+    def _to_float_or_none(self, value: Any) -> float | None:
+        if value is None:
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
 
     async def _save_upload(self, file: UploadFile, input_path: Path) -> None:
         with input_path.open("wb") as output_file:

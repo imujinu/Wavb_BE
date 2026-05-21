@@ -23,6 +23,11 @@ class Settings(BaseSettings):
         110,
         alias="AUDIO_SYNC_TIMEOUT_BUDGET_SECONDS",
     )
+    summary_text_chunk_chars: int = Field(
+        16000,
+        alias="SUMMARY_TEXT_CHUNK_CHARS",
+    )
+    summary_concurrency: int = Field(2, alias="SUMMARY_CONCURRENCY")
     allowed_origins_raw: str = Field(
         "http://localhost:8081,http://localhost:19006",
         alias="ALLOWED_ORIGINS",
