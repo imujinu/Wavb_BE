@@ -5,6 +5,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    database_url: str = Field("", alias="DATABASE_URL")
     openai_api_key: str = Field("", alias="OPENAI_API_KEY")
     openai_stt_model: str = Field("whisper-1", alias="OPENAI_STT_MODEL")
     openai_summary_model: str = Field("gpt-4o-mini", alias="OPENAI_SUMMARY_MODEL")

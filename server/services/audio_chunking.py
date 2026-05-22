@@ -20,6 +20,8 @@ class AudioChunk:
     index: int
     path: Path
     leading_overlap_seconds: float
+    start_seconds: float = 0.0
+    duration_seconds: float = 0.0
 
 
 def clamp(value: int, minimum: int, maximum: int) -> int:
@@ -107,6 +109,8 @@ class AudioChunkingService:
                     index=plan.index,
                     path=output_path,
                     leading_overlap_seconds=plan.leading_overlap_seconds,
+                    start_seconds=plan.start_seconds,
+                    duration_seconds=plan.duration_seconds,
                 )
             )
 
