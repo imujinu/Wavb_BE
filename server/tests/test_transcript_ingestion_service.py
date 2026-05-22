@@ -13,6 +13,7 @@ class FakeRepository:
         self.created = []
         self.updates = []
         self.inserted_segments = []
+        self.inserted_chunks = []
 
     async def create_transcript(self, transcript):
         self.created.append(transcript)
@@ -23,6 +24,9 @@ class FakeRepository:
 
     async def insert_segments(self, transcript_id, segments):
         self.inserted_segments.append((transcript_id, segments))
+
+    async def insert_chunks(self, transcript_id, chunks):
+        self.inserted_chunks.append((transcript_id, chunks))
 
 
 class FakeUploadFile:
@@ -73,7 +77,10 @@ async def test_ingest_upload_persists_transcript_result_and_segments() -> None:
     assert repository.inserted_segments[0][0] == repository.transcript_id
     assert [segment.segment_index for segment in repository.inserted_segments[0][1]] == [0, 1]
     assert repository.inserted_segments[0][1][0].raw_metadata["stt_model"] == "whisper-1"
+    assert repository.inserted_chunks[0][0] == repository.transcript_id
+    assert repository.inserted_chunks[0][1][0].chunk_strategy == "meeting_speaker_turn_v1"
     assert result.segment_count == 2
+    assert result.chunk_count == 1
 
 
 @pytest.mark.asyncio
@@ -91,3 +98,4 @@ async def test_ingest_upload_marks_transcript_failed_when_stt_fails() -> None:
     assert repository.updates[0][1].status == "failed"
     assert repository.updates[0][1].error_message == "provider failed"
     assert repository.inserted_segments == []
+    assert repository.inserted_chunks == []

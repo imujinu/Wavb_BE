@@ -5,6 +5,7 @@ from fastapi import HTTPException, UploadFile
 
 from repositories.rag_repository import RagRepository
 from schemas.rag import DomainType, SegmentCreate, TranscriptCreate, TranscriptResultUpdate
+from services.chunk_builder import get_chunk_builder
 from services.transcription_service import TranscriptionService, TranscriptionSegment
 
 
@@ -15,6 +16,7 @@ class TranscriptIngestionResult:
     duration_seconds: float | None
     stt_model: str
     segment_count: int
+    chunk_count: int
 
 
 class TranscriptIngestionService:
@@ -67,6 +69,9 @@ class TranscriptIngestionService:
                 stt_model=transcription.stt_model,
             )
             await self._repository.insert_segments(transcript_id, segments)
+            # 도메인 별 청크 빌딩 후 저장
+            chunks = get_chunk_builder(domain_type).build(segments)
+            await self._repository.insert_chunks(transcript_id, chunks)
         except Exception as exc:
             await self._repository.update_transcript_result(
                 transcript_id,
@@ -83,6 +88,7 @@ class TranscriptIngestionService:
             duration_seconds=transcription.duration_seconds,
             stt_model=transcription.stt_model,
             segment_count=len(segments),
+            chunk_count=len(chunks),
         )
 
     def _source_audio_uri(self, file: UploadFile) -> str:
