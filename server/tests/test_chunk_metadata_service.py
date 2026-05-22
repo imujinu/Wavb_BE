@@ -1,0 +1,137 @@
+from types import SimpleNamespace
+
+import pytest
+
+from schemas.rag import ChunkCreate
+from services.chunk_metadata_service import ChunkMetadataService
+
+
+class FakeCompletions:
+    def __init__(self, responses):
+        self._responses = list(responses)
+        self.calls = []
+
+    async def create(self, **kwargs):
+        self.calls.append(kwargs)
+        response = self._responses.pop(0)
+        if isinstance(response, Exception):
+            raise response
+        return SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    message=SimpleNamespace(content=response),
+                )
+            ]
+        )
+
+
+def make_service(responses, concurrency: int = 2) -> ChunkMetadataService:
+    service = ChunkMetadataService.__new__(ChunkMetadataService)
+    service._client = SimpleNamespace(
+        chat=SimpleNamespace(completions=FakeCompletions(responses))
+    )
+    service._model = "gpt-4o-mini"
+    service._metadata_concurrency = concurrency
+    return service
+
+
+def make_chunk(
+    domain_type="meeting",
+    chunk_index: int = 0,
+    metadata=None,
+) -> ChunkCreate:
+    return ChunkCreate(
+        domain_type=domain_type,
+        chunk_index=chunk_index,
+        chunk_strategy=f"{domain_type}_test_v1",
+        text="출시 일정과 담당 업무를 논의했습니다.",
+        metadata=metadata or {"segment_count": 2, "chunk_goal": "factual_retrieval"},
+    )
+
+
+@pytest.mark.asyncio
+async def test_enrich_meeting_chunk_adds_topic_keywords_summary_and_items() -> None:
+    service = make_service(
+        [
+            """
+            {
+              "topic": "출시 일정",
+              "subtopic": "",
+              "keywords": ["출시", "일정", ""],
+              "summary": "출시 일정과 담당 업무를 논의했습니다.",
+              "metadata": {
+                "decision_items": ["다음 주 출시"],
+                "action_items": ["Mina가 테스트 계획 공유"]
+              }
+            }
+            """
+        ]
+    )
+
+    enriched = await service.enrich_chunks([make_chunk()])
+
+    assert enriched[0].topic == "출시 일정"
+    assert enriched[0].subtopic is None
+    assert enriched[0].keywords == ["출시", "일정"]
+    assert enriched[0].summary == "출시 일정과 담당 업무를 논의했습니다."
+    assert enriched[0].metadata["segment_count"] == 2
+    assert enriched[0].metadata["decision_items"] == ["다음 주 출시"]
+    assert enriched[0].metadata["action_items"] == ["Mina가 테스트 계획 공유"]
+
+
+@pytest.mark.asyncio
+async def test_enrich_lecture_chunk_adds_concepts_and_learning_points() -> None:
+    service = make_service(
+        [
+            """
+            {
+              "topic": "역전파",
+              "subtopic": "기울기 계산",
+              "keywords": ["신경망", "역전파"],
+              "summary": "역전파의 목적과 계산 흐름을 설명합니다.",
+              "metadata": {
+                "concepts": ["역전파", "기울기"],
+                "learning_points": ["손실 함수에서 가중치 방향을 계산한다"]
+              }
+            }
+            """
+        ]
+    )
+
+    enriched = await service.enrich_chunks(
+        [make_chunk(domain_type="lecture", metadata={"overlap_from_previous": 1})]
+    )
+
+    assert enriched[0].topic == "역전파"
+    assert enriched[0].subtopic == "기울기 계산"
+    assert enriched[0].metadata["overlap_from_previous"] == 1
+    assert enriched[0].metadata["concepts"] == ["역전파", "기울기"]
+    assert enriched[0].metadata["learning_points"] == ["손실 함수에서 가중치 방향을 계산한다"]
+
+
+@pytest.mark.asyncio
+async def test_enrich_chunk_returns_original_when_provider_or_json_fails() -> None:
+    chunks = [make_chunk(chunk_index=0), make_chunk(chunk_index=1)]
+    service = make_service([RuntimeError("provider down"), "not-json"])
+
+    enriched = await service.enrich_chunks(chunks)
+
+    assert enriched == chunks
+
+
+@pytest.mark.asyncio
+async def test_enrich_chunks_preserves_input_order() -> None:
+    service = make_service(
+        [
+            '{"topic": "두 번째", "keywords": ["b"], "summary": "두 번째 요약", "metadata": {}}',
+            '{"topic": "첫 번째", "keywords": ["a"], "summary": "첫 번째 요약", "metadata": {}}',
+        ],
+        concurrency=1,
+    )
+
+    enriched = await service.enrich_chunks(
+        [make_chunk(chunk_index=1), make_chunk(chunk_index=0)]
+    )
+
+    assert [chunk.chunk_index for chunk in enriched] == [1, 0]
+    assert [chunk.topic for chunk in enriched] == ["두 번째", "첫 번째"]

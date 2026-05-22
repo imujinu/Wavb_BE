@@ -4,8 +4,15 @@ from uuid import UUID
 from fastapi import HTTPException, UploadFile
 
 from repositories.rag_repository import RagRepository
-from schemas.rag import DomainType, SegmentCreate, TranscriptCreate, TranscriptResultUpdate
+from schemas.rag import (
+    ChunkCreate,
+    DomainType,
+    SegmentCreate,
+    TranscriptCreate,
+    TranscriptResultUpdate,
+)
 from services.chunk_builder import get_chunk_builder
+from services.chunk_metadata_service import ChunkMetadataService
 from services.transcription_service import TranscriptionService, TranscriptionSegment
 
 
@@ -24,9 +31,11 @@ class TranscriptIngestionService:
         self,
         repository: RagRepository,
         transcription_service: TranscriptionService | None = None,
+        chunk_metadata_service: ChunkMetadataService | None = None,
     ) -> None:
         self._repository = repository
         self._transcription_service = transcription_service or TranscriptionService()
+        self._chunk_metadata_service = chunk_metadata_service
 
     # Create the transcript source row, run STT, and persist the reusable segments.
     async def ingest_upload(
@@ -71,6 +80,7 @@ class TranscriptIngestionService:
             await self._repository.insert_segments(transcript_id, segments)
             # 도메인 별 청크 빌딩 후 저장
             chunks = get_chunk_builder(domain_type).build(segments)
+            chunks = await self._enrich_chunks(chunks)
             await self._repository.insert_chunks(transcript_id, chunks)
         except Exception as exc:
             await self._repository.update_transcript_result(
@@ -90,6 +100,15 @@ class TranscriptIngestionService:
             segment_count=len(segments),
             chunk_count=len(chunks),
         )
+
+    # 검색용 chunk metadata를 생성합니다.
+    # OpenAI 설정이 없거나 생성 중 오류가 나면 원본 chunk를 반환해 transcript 저장 흐름을 유지합니다.
+    async def _enrich_chunks(self, chunks: list[ChunkCreate]) -> list[ChunkCreate]:
+        try:
+            metadata_service = self._chunk_metadata_service or ChunkMetadataService()
+            return await metadata_service.enrich_chunks(chunks)
+        except Exception:
+            return chunks
 
     def _source_audio_uri(self, file: UploadFile) -> str:
         filename = file.filename or "audio"

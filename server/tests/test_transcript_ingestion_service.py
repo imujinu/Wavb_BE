@@ -45,6 +45,28 @@ class FakeTranscriptionService:
         return self._result
 
 
+class FakeChunkMetadataService:
+    def __init__(self, exception=None) -> None:
+        self._exception = exception
+        self.received_chunks = []
+
+    async def enrich_chunks(self, chunks):
+        self.received_chunks.append(chunks)
+        if self._exception:
+            raise self._exception
+        return [
+            chunk.model_copy(
+                update={
+                    "topic": "출시 일정",
+                    "keywords": ["출시", "일정"],
+                    "summary": "출시 일정 논의 요약",
+                    "metadata": {**chunk.metadata, "decision_items": ["다음 주 출시"]},
+                }
+            )
+            for chunk in chunks
+        ]
+
+
 @pytest.mark.asyncio
 async def test_ingest_upload_persists_transcript_result_and_segments() -> None:
     repository = FakeRepository()
@@ -80,6 +102,60 @@ async def test_ingest_upload_persists_transcript_result_and_segments() -> None:
     assert repository.inserted_chunks[0][0] == repository.transcript_id
     assert repository.inserted_chunks[0][1][0].chunk_strategy == "meeting_speaker_turn_v1"
     assert result.segment_count == 2
+    assert result.chunk_count == 1
+
+
+@pytest.mark.asyncio
+async def test_ingest_upload_enriches_chunks_before_insert() -> None:
+    repository = FakeRepository()
+    transcription_service = FakeTranscriptionService(
+        TranscriptionResult(
+            text="출시 일정을 논의했습니다.",
+            duration_seconds=8.0,
+            stt_model="whisper-1",
+            segments=[TranscriptionSegment("출시 일정을 논의했습니다.", 0.0, 8.0)],
+        )
+    )
+    metadata_service = FakeChunkMetadataService()
+    service = TranscriptIngestionService(
+        repository,
+        transcription_service,
+        metadata_service,
+    )
+
+    await service.ingest_upload(FakeUploadFile(), domain_type="meeting")
+
+    inserted_chunk = repository.inserted_chunks[0][1][0]
+    assert metadata_service.received_chunks[0][0].chunk_strategy == "meeting_speaker_turn_v1"
+    assert inserted_chunk.topic == "출시 일정"
+    assert inserted_chunk.keywords == ["출시", "일정"]
+    assert inserted_chunk.summary == "출시 일정 논의 요약"
+    assert inserted_chunk.metadata["decision_items"] == ["다음 주 출시"]
+
+
+@pytest.mark.asyncio
+async def test_ingest_upload_uses_original_chunks_when_metadata_enrichment_fails() -> None:
+    repository = FakeRepository()
+    transcription_service = FakeTranscriptionService(
+        TranscriptionResult(
+            text="강의 개념을 설명했습니다.",
+            duration_seconds=8.0,
+            stt_model="whisper-1",
+            segments=[TranscriptionSegment("강의 개념을 설명했습니다.", 0.0, 8.0)],
+        )
+    )
+    service = TranscriptIngestionService(
+        repository,
+        transcription_service,
+        FakeChunkMetadataService(exception=RuntimeError("metadata failed")),
+    )
+
+    result = await service.ingest_upload(FakeUploadFile(), domain_type="lecture")
+
+    inserted_chunk = repository.inserted_chunks[0][1][0]
+    assert repository.updates[0][1].status == "completed"
+    assert inserted_chunk.topic is None
+    assert inserted_chunk.chunk_strategy == "lecture_context_section_v1"
     assert result.chunk_count == 1
 
 
