@@ -45,8 +45,23 @@ def make_chunk(
         chunk_index=chunk_index,
         chunk_strategy=f"{domain_type}_test_v1",
         text="출시 일정과 담당 업무를 논의했습니다.",
-        metadata=metadata or {"segment_count": 2, "chunk_goal": "factual_retrieval"},
+        metadata=metadata
+        or {
+            "segment_count": 2,
+            "chunk_goal": "summary_context_meeting",
+            "planning_method": "llm",
+            "planning_reason": "안건 단위 분리",
+        },
     )
+
+
+def test_chunk_metadata_prompt_targets_summary_context_metadata() -> None:
+    service = make_service([])
+
+    prompt = service._build_prompt(make_chunk())
+
+    assert "요약자료 생성용 metadata" in prompt
+    assert "검색용 metadata" not in prompt
 
 
 @pytest.mark.asyncio
@@ -75,6 +90,9 @@ async def test_enrich_meeting_chunk_adds_topic_keywords_summary_and_items() -> N
     assert enriched[0].keywords == ["출시", "일정"]
     assert enriched[0].summary == "출시 일정과 담당 업무를 논의했습니다."
     assert enriched[0].metadata["segment_count"] == 2
+    assert enriched[0].metadata["chunk_goal"] == "summary_context_meeting"
+    assert enriched[0].metadata["planning_method"] == "llm"
+    assert enriched[0].metadata["planning_reason"] == "안건 단위 분리"
     assert enriched[0].metadata["decision_items"] == ["다음 주 출시"]
     assert enriched[0].metadata["action_items"] == ["Mina가 테스트 계획 공유"]
 
@@ -99,11 +117,21 @@ async def test_enrich_lecture_chunk_adds_concepts_and_learning_points() -> None:
     )
 
     enriched = await service.enrich_chunks(
-        [make_chunk(domain_type="lecture", metadata={"overlap_from_previous": 1})]
+        [
+            make_chunk(
+                domain_type="lecture",
+                metadata={
+                    "segment_count": 2,
+                    "chunk_goal": "summary_context_lecture",
+                    "overlap_from_previous": 1,
+                },
+            )
+        ]
     )
 
     assert enriched[0].topic == "역전파"
     assert enriched[0].subtopic == "기울기 계산"
+    assert enriched[0].metadata["chunk_goal"] == "summary_context_lecture"
     assert enriched[0].metadata["overlap_from_previous"] == 1
     assert enriched[0].metadata["concepts"] == ["역전파", "기울기"]
     assert enriched[0].metadata["learning_points"] == ["손실 함수에서 가중치 방향을 계산한다"]

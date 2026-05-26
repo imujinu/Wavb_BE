@@ -2,10 +2,11 @@ from abc import ABC, abstractmethod
 from math import ceil
 
 from schemas.rag import ChunkCreate, DomainType, SegmentCreate
+from services.context_chunk_planning_service import ContextChunkPlanGroup
 
 
 class TranscriptChunkBuilder(ABC):
-    # Convert persisted STT segments into retrieval chunks for one transcript domain.
+    # 저장된 STT segment를 요약자료 생성에 사용할 맥락 단위 chunk로 변환합니다.
     @abstractmethod
     def build(self, segments: list[SegmentCreate]) -> list[ChunkCreate]:
         raise NotImplementedError
@@ -20,23 +21,17 @@ class MeetingChunkBuilder(TranscriptChunkBuilder):
         self._max_tokens = max_tokens
         self._max_seconds = max_seconds
 
-    # Build smaller factual chunks that preserve speaker and timestamp evidence.
-    # 빌드 전략: 발화자 변경, 긴 시간 간격, 또는 큰 텍스트 증가가 있을 때 새 청크 시작. 
-    # 이렇게 하면 검색된 청크가 발화자와 시간 범위에 대한 명확한 증거를 유지하면서도 너무 크지 않도록 합니다.
+    # 회의 segment를 요약자료 생성에 사용할 발화 흐름 단위 chunk로 묶습니다.
     def build(self, segments: list[SegmentCreate]) -> list[ChunkCreate]:
-        # 텍스트가 있는 세그먼트만 포함
         ordered_segments = self._ordered_non_empty_segments(segments)
-
         chunks: list[ChunkCreate] = []
         current: list[SegmentCreate] = []
 
         for segment in ordered_segments:
-            # 청크가 비어 있다면 바로 추가
             if not current:
                 current.append(segment)
                 continue
-            
-            # 청크를 새로 시작해야 하는지 판단
+
             if self._should_start_new_chunk(current, segment):
                 chunks.append(self._to_chunk(len(chunks), current))
                 current = [segment]
@@ -49,8 +44,7 @@ class MeetingChunkBuilder(TranscriptChunkBuilder):
 
         return chunks
 
-    # Keep segments ordered and skip blank STT fragments before building chunks.
-    # 세그먼트 순서를 유지하고 빈 STT 조각을 건너뛰어 청크를 빌드하기 전에 텍스트가 있는 세그먼트만 포함합니다.
+    # segment 순서를 보존하고 빈 STT 조각을 제외합니다.
     def _ordered_non_empty_segments(
         self,
         segments: list[SegmentCreate],
@@ -60,8 +54,7 @@ class MeetingChunkBuilder(TranscriptChunkBuilder):
             key=lambda segment: segment.segment_index,
         )
 
-    # Start a new meeting chunk at speaker changes, long time spans, or large text.
-    # 발화자 변경, 긴 시간 간격 또는 큰 텍스트 증가가 있을 때 새 회의 청크를 시작합니다.
+    # 현재 fallback 기준으로 새 회의 맥락 chunk를 시작할지 판단합니다.
     def _should_start_new_chunk(
         self,
         current: list[SegmentCreate],
@@ -84,8 +77,7 @@ class MeetingChunkBuilder(TranscriptChunkBuilder):
             or (speaker_changed and current_text.strip())
         )
 
-    # Create a ChunkCreate model while preserving source segment and time ranges.
-    # 원본 세그먼트 및 시간 범위를 유지하면서 ChunkCreate 모델을 생성합니다.
+    # 원본 segment와 시간 범위를 유지한 요약 맥락 ChunkCreate를 생성합니다.
     def _to_chunk(
         self,
         chunk_index: int,
@@ -103,7 +95,9 @@ class MeetingChunkBuilder(TranscriptChunkBuilder):
             speaker_labels=self._speaker_labels(segments),
             metadata={
                 "segment_count": len(segments),
-                "chunk_goal": "factual_retrieval",
+                "chunk_goal": "summary_context_meeting",
+                "planning_method": "fallback",
+                "planning_reason": "deterministic meeting fallback builder",
             },
         )
 
@@ -130,7 +124,7 @@ class LectureChunkBuilder(TranscriptChunkBuilder):
         self._max_tokens = max_tokens
         self._overlap_segments = overlap_segments
 
-    # Build larger context chunks with light segment overlap for concept continuity.
+    # 강의 segment를 요약자료 생성에 사용할 개념 흐름 단위 chunk로 묶습니다.
     def build(self, segments: list[SegmentCreate]) -> list[ChunkCreate]:
         ordered_segments = self._ordered_non_empty_segments(segments)
         chunks: list[ChunkCreate] = []
@@ -151,7 +145,6 @@ class LectureChunkBuilder(TranscriptChunkBuilder):
                         overlap_from_previous=current_overlap_count,
                     )
                 )
-                # 개념 연속성을 위해 다음 청크에서 마지막 몇 개 세그먼트를 재사용합니다.
                 overlap = self._overlap_tail(current)
                 current = [*overlap, segment]
                 current_overlap_count = len(overlap)
@@ -170,8 +163,7 @@ class LectureChunkBuilder(TranscriptChunkBuilder):
 
         return chunks
 
-    # Keep segments ordered and skip blank STT fragments before building chunks.
-    # 세그먼트 순서를 유지하고 빈 STT 조각을 건너뛰어 청크를 빌드하기 전에 텍스트가 있는 세그먼트만 포함합니다.
+    # segment 순서를 보존하고 빈 STT 조각을 제외합니다.
     def _ordered_non_empty_segments(
         self,
         segments: list[SegmentCreate],
@@ -181,13 +173,13 @@ class LectureChunkBuilder(TranscriptChunkBuilder):
             key=lambda segment: segment.segment_index,
         )
 
-    # Reuse the last few lecture segments in the next chunk to retain context. 
+    # 개념 흐름을 유지하기 위해 이전 chunk의 마지막 segment 일부를 다음 chunk에 재사용합니다.
     def _overlap_tail(self, segments: list[SegmentCreate]) -> list[SegmentCreate]:
         if self._overlap_segments <= 0:
             return []
         return segments[-self._overlap_segments :]
 
-    # Create a ChunkCreate model while preserving source segment and time ranges.
+    # 원본 segment와 시간 범위를 유지한 요약 맥락 ChunkCreate를 생성합니다.
     def _to_chunk(
         self,
         chunk_index: int,
@@ -207,7 +199,9 @@ class LectureChunkBuilder(TranscriptChunkBuilder):
             metadata={
                 "segment_count": len(segments),
                 "overlap_from_previous": overlap_from_previous,
-                "chunk_goal": "conceptual_retrieval",
+                "chunk_goal": "summary_context_lecture",
+                "planning_method": "fallback",
+                "planning_reason": "deterministic lecture fallback builder",
             },
         )
 
@@ -221,12 +215,177 @@ class LectureChunkBuilder(TranscriptChunkBuilder):
                 labels.append(segment.speaker_label)
         return labels
 
-    # 토큰 수를 대략적으로 추정하는 방법입니다. 실제 토큰 수는 사용하는 토크나이저에 따라 다를 수 있지만, 일반적으로 영어 텍스트의 경우 1 토큰이 약 3 문자라고 가정할 수 있습니다. 따라서 텍스트 길이를 3으로 나누고 올림하여 토큰 수를 추정합니다. 최소값을 1로 설정하여 빈 텍스트에 대해서도 1 토큰으로 처리합니다.
+    # 실제 tokenizer 없이 텍스트 길이 기반으로 token 수를 대략 추정합니다.
     def _estimate_tokens(self, text: str) -> int:
         return max(1, ceil(len(text) / 3))
 
 
-# Select the domain-specific chunking strategy without leaking that choice to callers.
+class ContextPlannedChunkBuilder:
+    # LLM planner가 만든 segment range plan을 DB에 저장할 ChunkCreate 목록으로 변환합니다.
+    # domain_type에 따라 chunk_goal과 chunk_strategy를 분리하고, plan의 판단 이유를 metadata에 보존합니다.
+    def build(
+        self,
+        domain_type: DomainType,
+        segments: list[SegmentCreate],
+        plan_groups: list[ContextChunkPlanGroup],
+    ) -> list[ChunkCreate]:
+        if not segments or not plan_groups:
+            return []
+
+        ordered_segments = self._ordered_non_empty_segments(segments)
+        segment_by_index = {segment.segment_index: segment for segment in ordered_segments}
+        chunks: list[ChunkCreate] = []
+
+        for group in plan_groups:
+            group_segments: list[SegmentCreate] = []
+            for index in range(group.segment_start_index, group.segment_end_index + 1):
+                if index not in segment_by_index:
+                    raise ValueError("Context chunk plan references unknown segment.")
+                group_segments.append(segment_by_index[index])
+            if not group_segments:
+                raise ValueError("Context chunk plan references no persisted segments.")
+            chunks.append(self._to_chunk(domain_type, len(chunks), group, group_segments))
+
+        return chunks
+
+    # segment 순서를 보존하고 빈 STT 조각을 제외합니다.
+    def _ordered_non_empty_segments(
+        self,
+        segments: list[SegmentCreate],
+    ) -> list[SegmentCreate]:
+        return sorted(
+            [segment for segment in segments if segment.text.strip()],
+            key=lambda segment: segment.segment_index,
+        )
+
+    # 하나의 plan group과 해당 segment range를 실제 chunks 테이블 입력 모델로 변환합니다.
+    def _to_chunk(
+        self,
+        domain_type: DomainType,
+        chunk_index: int,
+        group: ContextChunkPlanGroup,
+        segments: list[SegmentCreate],
+    ) -> ChunkCreate:
+        metadata = {
+            "segment_count": len(segments),
+            "chunk_goal": self._chunk_goal(domain_type),
+            "planning_method": group.planning_method,
+            "planning_reason": group.reason,
+        }
+        if group.topic:
+            metadata["planning_topic"] = group.topic
+        if group.summary_hint:
+            metadata["summary_hint"] = group.summary_hint
+        if group.planning_error:
+            metadata["planning_error"] = group.planning_error
+
+        return ChunkCreate(
+            domain_type=domain_type,
+            chunk_index=chunk_index,
+            chunk_strategy=self._chunk_strategy(domain_type, group.planning_method),
+            text=self._join_text(segments),
+            segment_start_index=segments[0].segment_index,
+            segment_end_index=segments[-1].segment_index,
+            start_seconds=segments[0].start_seconds,
+            end_seconds=segments[-1].end_seconds,
+            speaker_labels=self._speaker_labels(segments),
+            metadata=metadata,
+        )
+
+    def _chunk_goal(self, domain_type: DomainType) -> str:
+        if domain_type == "meeting":
+            return "summary_context_meeting"
+        return "summary_context_lecture"
+
+    def _chunk_strategy(self, domain_type: DomainType, planning_method: str) -> str:
+        if planning_method == "fallback":
+            return f"{domain_type}_context_fallback_v1"
+        return f"{domain_type}_context_plan_v1"
+
+    def _join_text(self, segments: list[SegmentCreate]) -> str:
+        return " ".join(segment.text.strip() for segment in segments if segment.text.strip())
+
+    def _speaker_labels(self, segments: list[SegmentCreate]) -> list[str]:
+        labels: list[str] = []
+        for segment in segments:
+            if segment.speaker_label and segment.speaker_label not in labels:
+                labels.append(segment.speaker_label)
+        return labels
+
+
+class DeterministicFallbackChunkBuilder:
+    def __init__(
+        self,
+        meeting_max_seconds: float = 180.0,
+        lecture_max_seconds: float = 300.0,
+        planned_chunk_builder: ContextPlannedChunkBuilder | None = None,
+    ) -> None:
+        self._meeting_max_seconds = meeting_max_seconds
+        self._lecture_max_seconds = lecture_max_seconds
+        self._planned_chunk_builder = planned_chunk_builder or ContextPlannedChunkBuilder()
+
+    # LLM planner를 사용할 수 없을 때 transcript 저장을 유지하기 위한 시간 기준 fallback chunk를 생성합니다.
+    # 이 기준은 주된 맥락 판단이 아니라 과도하게 긴 chunk만 막는 안전장치입니다.
+    def build(
+        self,
+        domain_type: DomainType,
+        segments: list[SegmentCreate],
+    ) -> list[ChunkCreate]:
+        ordered_segments = self._ordered_non_empty_segments(segments)
+        if not ordered_segments:
+            return []
+        plan_groups = self._build_plan_groups(domain_type, ordered_segments)
+        return self._planned_chunk_builder.build(domain_type, ordered_segments, plan_groups)
+
+    # meeting은 180초, lecture는 300초를 넘기지 않도록 연속 segment range plan을 만듭니다.
+    def _build_plan_groups(
+        self,
+        domain_type: DomainType,
+        segments: list[SegmentCreate],
+    ) -> list[ContextChunkPlanGroup]:
+        max_seconds = (
+            self._meeting_max_seconds if domain_type == "meeting" else self._lecture_max_seconds
+        )
+        groups: list[ContextChunkPlanGroup] = []
+        current_start = segments[0]
+        current_end = segments[0]
+
+        for segment in segments[1:]:
+            projected_seconds = segment.end_seconds - current_start.start_seconds
+            if projected_seconds > max_seconds:
+                groups.append(self._to_plan_group(current_start, current_end, max_seconds))
+                current_start = segment
+            current_end = segment
+
+        groups.append(self._to_plan_group(current_start, current_end, max_seconds))
+        return groups
+
+    def _to_plan_group(
+        self,
+        start_segment: SegmentCreate,
+        end_segment: SegmentCreate,
+        max_seconds: float,
+    ) -> ContextChunkPlanGroup:
+        return ContextChunkPlanGroup(
+            segment_start_index=start_segment.segment_index,
+            segment_end_index=end_segment.segment_index,
+            topic=None,
+            reason=f"deterministic fallback: {max_seconds:g}초 안전 기준",
+            summary_hint=None,
+            planning_method="fallback",
+        )
+
+    def _ordered_non_empty_segments(
+        self,
+        segments: list[SegmentCreate],
+    ) -> list[SegmentCreate]:
+        return sorted(
+            [segment for segment in segments if segment.text.strip()],
+            key=lambda segment: segment.segment_index,
+        )
+
+
+# domain_type에 맞는 fallback chunk builder를 선택합니다.
 def get_chunk_builder(domain_type: DomainType) -> TranscriptChunkBuilder:
     if domain_type == "meeting":
         return MeetingChunkBuilder()

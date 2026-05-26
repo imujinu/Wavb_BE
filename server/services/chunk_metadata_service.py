@@ -11,7 +11,7 @@ from settings import get_settings
 
 
 SYSTEM_PROMPT = (
-    "You enrich Korean voice transcript chunks for retrieval. "
+    "You enrich Korean voice transcript chunks for summary material generation. "
     "Do not invent facts that are not present in the chunk. "
     "Return only valid JSON."
 )
@@ -38,7 +38,7 @@ class ChunkMetadataService:
         self._model = settings.openai_summary_model
         self._metadata_concurrency = settings.summary_concurrency
 
-    # 청크 목록을 받아 검색에 사용할 topic, keyword, summary metadata를 생성합니다.
+    # 청크 목록을 받아 요약자료 생성에 사용할 topic, keyword, summary metadata를 생성합니다.
     # 각 청크는 독립적으로 처리되며, 한 청크의 실패가 전체 저장 흐름을 막지 않도록 원본 청크로 대체합니다.
     async def enrich_chunks(self, chunks: list[ChunkCreate]) -> list[ChunkCreate]:
         if not chunks:
@@ -121,7 +121,7 @@ class ChunkMetadataService:
     # meeting은 결정/할 일, lecture는 개념/학습 포인트를 중심으로 추출합니다.
     def _build_prompt(self, chunk: ChunkCreate) -> str:
         common_instruction = (
-            "다음 transcript chunk만 근거로 검색용 metadata를 생성하세요.\n"
+            "다음 transcript chunk만 근거로 요약자료 생성용 metadata를 생성하세요.\n"
             "한국어로 작성하고, 근거가 없으면 빈 문자열 또는 빈 배열을 사용하세요.\n"
             "반드시 JSON object만 반환하세요.\n"
             "공통 필드: topic, subtopic, keywords, summary\n"
