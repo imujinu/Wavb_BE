@@ -1,8 +1,17 @@
-from typing import Any
+from collections.abc import AsyncIterator
+from typing import Any, Protocol
 
 from fastapi import HTTPException, status
 
 from settings import get_settings
+
+
+class DatabaseConnection(Protocol):
+    async def execute(self, query: str, *args: Any) -> Any: ...
+
+    async def fetchrow(self, query: str, *args: Any) -> Any: ...
+
+    async def executemany(self, query: str, args: list[tuple[Any, ...]]) -> Any: ...
 
 
 class Database:
@@ -10,7 +19,6 @@ class Database:
         self._database_url = database_url
         self._pool: Any | None = None
 
-    # PostgreSQL pool을 지연 생성해서 DB가 없는 테스트/로컬 import 흐름을 깨지 않게 한다.
     async def connect(self) -> None:
         if self._pool is not None:
             return
@@ -30,14 +38,12 @@ class Database:
 
         self._pool = await asyncpg.create_pool(self._database_url)
 
-    # 앱 종료 시 pool을 닫아 PostgreSQL connection 누수를 막는다.
     async def disconnect(self) -> None:
         if self._pool is None:
             return
         await self._pool.close()
         self._pool = None
 
-    # repository가 transaction/acquire를 직접 사용할 수 있도록 pool을 제공한다.
     @property
     def pool(self) -> Any:
         if self._pool is None:
@@ -48,6 +54,29 @@ class Database:
         return self._pool
 
 
+_database: Database | None = None
+
+
 def get_database() -> Database:
+    global _database
+    if _database is not None:
+        return _database
+
     settings = get_settings()
-    return Database(settings.database_url)
+    _database = Database(settings.database_url)
+    return _database
+
+
+async def connect_database() -> None:
+    await get_database().connect()
+
+
+async def disconnect_database() -> None:
+    await get_database().disconnect()
+
+
+async def get_connection() -> AsyncIterator[DatabaseConnection]:
+    database = get_database()
+    await database.connect()
+    async with database.pool.acquire() as connection:
+        yield connection

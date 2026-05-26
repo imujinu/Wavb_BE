@@ -4,7 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel
 
-from db.connection import get_database
+from db.connection import DatabaseConnection, get_connection
 from repositories.rag_repository import RagRepository
 from schemas.rag import DomainType
 from services.summary_service import SummaryService
@@ -31,14 +31,10 @@ class AudioTranscriptResponse(BaseModel):
     status: str
 
 
-async def get_rag_repository() -> AsyncIterator[RagRepository]:
-    database = get_database()
-    await database.connect()
-    try:
-        async with database.pool.acquire() as connection:
-            yield RagRepository(connection)
-    finally:
-        await database.disconnect()
+async def get_rag_repository(
+    connection: DatabaseConnection = Depends(get_connection),
+) -> AsyncIterator[RagRepository]:
+    yield RagRepository(connection)
 
 
 def validate_audio_file(file: UploadFile) -> None:

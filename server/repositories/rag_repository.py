@@ -1,16 +1,9 @@
 import json
-from typing import Any, Protocol
+from typing import Any
 from uuid import UUID, uuid4
 
+from db.connection import DatabaseConnection
 from schemas.rag import ChunkCreate, SegmentCreate, TranscriptCreate, TranscriptResultUpdate
-
-
-class DatabaseConnection(Protocol):
-    async def execute(self, query: str, *args: Any) -> Any: ...
-
-    async def fetchrow(self, query: str, *args: Any) -> Any: ...
-
-    async def executemany(self, query: str, args: list[tuple[Any, ...]]) -> Any: ...
 
 
 class RagRepository:

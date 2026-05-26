@@ -4,6 +4,7 @@ from uuid import UUID, uuid4
 import pytest
 from pydantic import ValidationError
 
+from db import connection as db_connection
 from repositories.rag_repository import RagRepository
 from schemas.rag import (
     ChunkCreate,
@@ -28,6 +29,37 @@ class FakeConnection:
 
     async def executemany(self, query: str, args: list[tuple]):
         self.executemany_calls.append((query, args))
+
+
+class FakeAcquireContext:
+    def __init__(self, connection: FakeConnection) -> None:
+        self.connection = connection
+        self.entered = False
+        self.exited = False
+
+    async def __aenter__(self) -> FakeConnection:
+        self.entered = True
+        return self.connection
+
+    async def __aexit__(self, exc_type, exc, traceback) -> None:
+        self.exited = True
+
+
+class FakePool:
+    def __init__(self, connection: FakeConnection) -> None:
+        self.acquire_context = FakeAcquireContext(connection)
+
+    def acquire(self) -> FakeAcquireContext:
+        return self.acquire_context
+
+
+class FakeDatabase:
+    def __init__(self, connection: FakeConnection) -> None:
+        self.pool = FakePool(connection)
+        self.connected = False
+
+    async def connect(self) -> None:
+        self.connected = True
 
 
 def test_settings_reads_database_url() -> None:
@@ -83,6 +115,22 @@ def test_chunk_model_normalizes_blank_metadata_lists() -> None:
 
     assert chunk.keywords == ["개념"]
     assert chunk.speaker_labels == ["speaker_1"]
+
+
+@pytest.mark.asyncio
+async def test_get_connection_connects_and_acquires_pool(monkeypatch) -> None:
+    fake_connection = FakeConnection()
+    fake_database = FakeDatabase(fake_connection)
+    monkeypatch.setattr(db_connection, "_database", fake_database)
+
+    yielded_connections = []
+    async for connection in db_connection.get_connection():
+        yielded_connections.append(connection)
+
+    assert fake_database.connected is True
+    assert yielded_connections == [fake_connection]
+    assert fake_database.pool.acquire_context.entered is True
+    assert fake_database.pool.acquire_context.exited is True
 
 
 @pytest.mark.asyncio
