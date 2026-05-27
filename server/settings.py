@@ -9,6 +9,10 @@ class Settings(BaseSettings):
     openai_api_key: str = Field("", alias="OPENAI_API_KEY")
     openai_stt_model: str = Field("whisper-1", alias="OPENAI_STT_MODEL")
     openai_summary_model: str = Field("gpt-4o-mini", alias="OPENAI_SUMMARY_MODEL")
+    openai_embedding_model: str = Field(
+        "text-embedding-3-small",
+        alias="OPENAI_EMBEDDING_MODEL",
+    )
     audio_transcription_concurrency: int = Field(
         3,
         alias="AUDIO_TRANSCRIPTION_CONCURRENCY",

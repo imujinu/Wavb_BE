@@ -94,3 +94,35 @@ class ChunkCreate(BaseModel):
         ):
             raise ValueError("end_seconds must be greater than or equal to start_seconds")
         return self
+
+
+# chunks 테이블에서 읽어온 chunk 행을 나타내는 읽기 전용 모델.
+# insert_chunks() 완료 후 DB에서 조회해 parent_chunk_id를 얻기 위해 사용한다.
+class ChunkRow(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    id: UUID
+    chunk_index: int
+    segment_start_index: int | None
+    segment_end_index: int | None
+    start_seconds: float | None
+    end_seconds: float | None
+    text: str
+    metadata: dict[str, Any]
+
+
+# search_chunks 테이블 insert용 모델.
+# parent chunk(ChunkRow)를 adaptive grouping으로 분할한 child search unit을 표현한다.
+class SearchChunkCreate(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    parent_chunk_id: UUID
+    child_index: int = Field(ge=0)
+    segment_start_index: int = Field(ge=0)
+    segment_end_index: int = Field(ge=0)
+    start_seconds: float | None = Field(default=None, ge=0)
+    end_seconds: float | None = Field(default=None, ge=0)
+    text: str = Field(min_length=1)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    embedding_model: str | None = None
+    embedding: list[float] | None = None
