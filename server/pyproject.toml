@@ -12,6 +12,8 @@ dependencies = [
     "python-multipart>=0.0.9",
     "asyncpg>=0.30.0",
     "uvicorn[standard]>=0.30.0",
+    "langgraph>=0.0.40",
+    "langgraph-checkpoint-postgres>=0.0.0",
 ]
 
 [dependency-groups]

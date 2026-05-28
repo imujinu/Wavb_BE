@@ -126,3 +126,58 @@ class SearchChunkCreate(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
     embedding_model: str | None = None
     embedding: list[float] | None = None
+
+
+# RAG 챗봇 API 스키마
+# 질문 요청: transcript_id 또는 user_id 중 최소 하나는 필수
+class RagChatRequest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    query: str = Field(min_length=1, max_length=1000)
+    transcript_id: UUID | None = None
+    user_id: UUID | None = None
+    domain_type: DomainType | None = None
+    conversation_id: UUID | None = None
+
+    @model_validator(mode="after")
+    def validate_search_scope(self) -> "RagChatRequest":
+        # transcript_id 또는 user_id 중 최소 하나는 필수
+        if not self.transcript_id and not self.user_id:
+            raise ValueError("transcript_id or user_id is required")
+        return self
+
+
+# RAG 챗봇 재개 요청: interrupted 상태에서 thread_id와 resume input으로 재개
+class RagChatResumeRequest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    thread_id: UUID
+    query: str = Field(min_length=1, max_length=1000)
+
+
+# 검색 결과 근거 소스
+class RagSource(BaseModel):
+    transcript_id: UUID
+    parent_chunk_id: UUID
+    child_index: int
+    start_seconds: float | None = None
+    end_seconds: float | None = None
+    score: float
+    snippet: str
+
+
+# RAG 챗봇 응답: 완료 상태
+class RagChatCompletedResponse(BaseModel):
+    status: Literal["completed"] = "completed"
+    answer: str
+    confidence: float
+    sources: list[RagSource]
+
+
+# RAG 챗봇 응답: interrupt 상태 (human-in-the-loop 재개 필요)
+class RagChatInterruptedResponse(BaseModel):
+    status: Literal["interrupted"] = "interrupted"
+    thread_id: UUID
+    reason: Literal["low_confidence", "insufficient_context"]
+    message: str
+    suggested_queries: list[str] = Field(default_factory=list)
