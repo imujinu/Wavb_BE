@@ -3,7 +3,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from db.connection import DatabaseConnection
-from schemas.rag import ChunkCreate, SegmentCreate, TranscriptCreate, TranscriptResultUpdate
+from schemas.rag import ChunkCreate, ChunkRow, SearchChunkCreate, SegmentCreate, TranscriptCreate, TranscriptResultUpdate
 
 
 class RagRepository:
@@ -162,6 +162,96 @@ class RagRepository:
                     self._to_vector_literal(chunk.embedding),
                 )
                 for chunk in chunks
+            ],
+        )
+
+    # insert_chunks() 완료 후 search_chunks 생성에 필요한 parent_chunk_id를 얻기 위해 조회한다.
+    async def fetch_chunks_by_transcript(self, transcript_id: UUID) -> list[ChunkRow]:
+        rows = await self._connection.fetch(
+            """
+            SELECT id, chunk_index, segment_start_index, segment_end_index,
+                   start_seconds, end_seconds, text, metadata
+            FROM chunks
+            WHERE transcript_id = $1
+            ORDER BY chunk_index
+            """,
+            transcript_id,
+        )
+
+        return [
+            ChunkRow(
+                id=row["id"],
+                chunk_index=row["chunk_index"],
+                segment_start_index=row["segment_start_index"],
+                segment_end_index=row["segment_end_index"],
+                start_seconds=float(row["start_seconds"]) if row["start_seconds"] is not None else None,
+                end_seconds=float(row["end_seconds"]) if row["end_seconds"] is not None else None,
+                text=row["text"],
+                metadata=row["metadata"] if row["metadata"] is not None else {},
+            )
+            for row in rows
+        ]
+
+    # insert_chunks() 완료 후 fetch_chunks_by_transcript()로 parent_chunk_id를 확보하고,
+    # SearchChunkSplitService가 생성한 search_chunks를 이 메서드로 bulk upsert한다.
+    # transcript_id를 직접 저장해 transcript 단위 전체 조회/삭제 경로를 최적화한다.
+    async def insert_search_chunks(
+        self,
+        transcript_id: UUID,
+        search_chunks: list[SearchChunkCreate],
+    ) -> None:
+        """
+        기능 요약: search_chunks를 DB에 bulk upsert한다. parent_chunk_id + child_index 기준 conflict handling.
+
+        기능 흐름:
+            1. 빈 목록은 조기 반환
+            2. executemany로 일괄 insert/upsert 실행
+            3. upsert 키: (parent_chunk_id, child_index)
+            4. embedding은 _to_vector_literal()로 직렬화, metadata는 _to_json()으로 직렬화
+
+        파라미터:
+            transcript_id: 이 청크들이 속한 transcript의 ID (예: UUID("a1b2c3..."))
+            search_chunks: 저장할 search unit 목록 (예: parent chunk를 3분할한 child list)
+        """
+        # 1. 빈 목록 조기 반환 — executemany에 빈 리스트를 넘기지 않도록 방어
+        if not search_chunks:
+            return
+
+        # 2. search_chunks를 일괄 upsert — parent_chunk_id + child_index 충돌 시 전체 필드 갱신
+        await self._connection.executemany(
+            """
+            INSERT INTO search_chunks (
+              id, transcript_id, parent_chunk_id, child_index,
+              segment_start_index, segment_end_index, start_seconds, end_seconds,
+              text, embedding_model, embedding, metadata
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::vector, $12::jsonb)
+            ON CONFLICT (parent_chunk_id, child_index) DO UPDATE
+            SET segment_start_index = EXCLUDED.segment_start_index,
+                segment_end_index = EXCLUDED.segment_end_index,
+                start_seconds = EXCLUDED.start_seconds,
+                end_seconds = EXCLUDED.end_seconds,
+                text = EXCLUDED.text,
+                embedding_model = EXCLUDED.embedding_model,
+                embedding = EXCLUDED.embedding,
+                metadata = EXCLUDED.metadata
+            """,
+            [
+                (
+                    uuid4(),
+                    transcript_id,
+                    chunk.parent_chunk_id,
+                    chunk.child_index,
+                    chunk.segment_start_index,
+                    chunk.segment_end_index,
+                    chunk.start_seconds,
+                    chunk.end_seconds,
+                    chunk.text,
+                    chunk.embedding_model,
+                    self._to_vector_literal(chunk.embedding),
+                    self._to_json(chunk.metadata),
+                )
+                for chunk in search_chunks
             ],
         )
 

@@ -8,6 +8,7 @@ from db import connection as db_connection
 from repositories.rag_repository import RagRepository
 from schemas.rag import (
     ChunkCreate,
+    SearchChunkCreate,
     SegmentCreate,
     TranscriptCreate,
     TranscriptResultUpdate,
@@ -216,3 +217,128 @@ async def test_repository_inserts_segments_and_chunks() -> None:
     assert connection.executemany_calls[1][1][0][2] == "meeting"
     assert connection.executemany_calls[1][1][0][13] == ["일정"]
     assert connection.executemany_calls[1][1][0][17] == "[0.1,0.2,0.3]"
+
+
+@pytest.mark.asyncio
+async def test_insert_search_chunks_creates_rows() -> None:
+    # insert_search_chunks가 executemany를 올바른 SQL과 파라미터로 호출하는지 검증한다.
+    connection = FakeConnection()
+    repository = RagRepository(connection)
+    transcript_id = uuid4()
+    parent_chunk_id = uuid4()
+
+    search_chunks = [
+        SearchChunkCreate(
+            parent_chunk_id=parent_chunk_id,
+            child_index=0,
+            segment_start_index=0,
+            segment_end_index=2,
+            start_seconds=0.0,
+            end_seconds=30.0,
+            text="첫 번째 검색 청크",
+            metadata={"segment_count": 3},
+            embedding_model="text-embedding-3-small",
+            embedding=[0.1, 0.2, 0.3],
+        ),
+        SearchChunkCreate(
+            parent_chunk_id=parent_chunk_id,
+            child_index=1,
+            segment_start_index=3,
+            segment_end_index=5,
+            start_seconds=30.0,
+            end_seconds=60.0,
+            text="두 번째 검색 청크",
+            metadata={"segment_count": 3},
+            embedding_model="text-embedding-3-small",
+            embedding=[0.4, 0.5, 0.6],
+        ),
+    ]
+
+    await repository.insert_search_chunks(transcript_id, search_chunks)
+
+    # executemany가 정확히 1회 호출되었는지 확인
+    assert len(connection.executemany_calls) == 1
+
+    sql, params = connection.executemany_calls[0]
+
+    # SQL에 필수 키워드가 포함되어 있는지 확인
+    assert "INSERT INTO search_chunks" in sql
+    assert "ON CONFLICT (parent_chunk_id, child_index)" in sql
+
+    # 첫 번째 행 파라미터 매핑 검증: $2=transcript_id, $3=parent_chunk_id, $4=child_index
+    first_row = params[0]
+    assert first_row[1] == transcript_id
+    assert first_row[2] == parent_chunk_id
+    assert first_row[3] == 0
+    assert first_row[8] == "첫 번째 검색 청크"
+    assert first_row[9] == "text-embedding-3-small"
+
+    # 두 번째 행도 정상 저장되는지 확인
+    assert params[1][3] == 1
+    assert params[1][8] == "두 번째 검색 청크"
+
+
+@pytest.mark.asyncio
+async def test_insert_search_chunks_empty_list_does_nothing() -> None:
+    # 빈 목록 전달 시 executemany를 호출하지 않고 조기 반환하는지 검증한다.
+    connection = FakeConnection()
+    repository = RagRepository(connection)
+    transcript_id = uuid4()
+
+    await repository.insert_search_chunks(transcript_id, [])
+
+    assert len(connection.executemany_calls) == 0
+
+
+@pytest.mark.asyncio
+async def test_insert_search_chunks_uses_vector_literal() -> None:
+    # embedding 벡터가 _to_vector_literal() 형식("[0.1,0.2,0.3]")으로 변환되는지 검증한다.
+    connection = FakeConnection()
+    repository = RagRepository(connection)
+    transcript_id = uuid4()
+
+    await repository.insert_search_chunks(
+        transcript_id,
+        [
+            SearchChunkCreate(
+                parent_chunk_id=uuid4(),
+                child_index=0,
+                segment_start_index=0,
+                segment_end_index=1,
+                text="벡터 직렬화 테스트",
+                embedding_model="text-embedding-3-small",
+                embedding=[0.1, 0.2, 0.3],
+            )
+        ],
+    )
+
+    # $11 위치(index 10)가 vector literal 형식인지 확인
+    row = connection.executemany_calls[0][1][0]
+    assert row[10] == "[0.1,0.2,0.3]"
+
+
+@pytest.mark.asyncio
+async def test_insert_search_chunks_uses_json_metadata() -> None:
+    # metadata dict가 _to_json() 형식(한글 손실 없는 JSON string)으로 변환되는지 검증한다.
+    connection = FakeConnection()
+    repository = RagRepository(connection)
+    transcript_id = uuid4()
+
+    await repository.insert_search_chunks(
+        transcript_id,
+        [
+            SearchChunkCreate(
+                parent_chunk_id=uuid4(),
+                child_index=0,
+                segment_start_index=0,
+                segment_end_index=1,
+                text="메타데이터 직렬화 테스트",
+                embedding_model="text-embedding-3-small",
+                metadata={"주제": "회의", "segment_count": 2},
+            )
+        ],
+    )
+
+    # $12 위치(index 11)가 한글 손실 없는 JSON string인지 확인
+    row = connection.executemany_calls[0][1][0]
+    assert row[11] == '{"주제": "회의", "segment_count": 2}'

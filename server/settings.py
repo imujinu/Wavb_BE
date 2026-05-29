@@ -9,6 +9,10 @@ class Settings(BaseSettings):
     openai_api_key: str = Field("", alias="OPENAI_API_KEY")
     openai_stt_model: str = Field("whisper-1", alias="OPENAI_STT_MODEL")
     openai_summary_model: str = Field("gpt-4o-mini", alias="OPENAI_SUMMARY_MODEL")
+    openai_embedding_model: str = Field(
+        "text-embedding-3-small",
+        alias="OPENAI_EMBEDDING_MODEL",
+    )
     audio_transcription_concurrency: int = Field(
         3,
         alias="AUDIO_TRANSCRIPTION_CONCURRENCY",
@@ -33,6 +37,11 @@ class Settings(BaseSettings):
         "http://localhost:8081,http://localhost:19006",
         alias="ALLOWED_ORIGINS",
     )
+    # JWT 인증에 필요한 시크릿 키 및 토큰 만료 설정
+    jwt_secret_key: str = Field("", alias="JWT_SECRET_KEY")
+    jwt_algorithm: str = Field("HS256", alias="JWT_ALGORITHM")
+    jwt_access_token_expire_minutes: int = Field(60, alias="JWT_ACCESS_TOKEN_EXPIRE_MINUTES")
+    jwt_refresh_token_expire_days: int = Field(30, alias="JWT_REFRESH_TOKEN_EXPIRE_DAYS")
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

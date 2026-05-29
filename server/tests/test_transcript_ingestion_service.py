@@ -3,6 +3,7 @@ from uuid import UUID, uuid4
 import pytest
 from fastapi import HTTPException
 
+from schemas.rag import ChunkRow
 from services.context_chunk_planning_service import ContextChunkPlanGroup
 from services.transcript_ingestion_service import TranscriptIngestionService
 from services.transcription_service import TranscriptionResult, TranscriptionSegment
@@ -15,6 +16,9 @@ class FakeRepository:
         self.updates = []
         self.inserted_segments = []
         self.inserted_chunks = []
+        self.inserted_search_chunks = []
+        # fetch_chunks_by_transcript 반환값 — 테스트에서 덮어쓸 수 있음
+        self._chunk_rows: list[ChunkRow] = []
 
     async def create_transcript(self, transcript):
         self.created.append(transcript)
@@ -28,6 +32,12 @@ class FakeRepository:
 
     async def insert_chunks(self, transcript_id, chunks):
         self.inserted_chunks.append((transcript_id, chunks))
+
+    async def fetch_chunks_by_transcript(self, _):
+        return self._chunk_rows
+
+    async def insert_search_chunks(self, transcript_id, search_chunks):
+        self.inserted_search_chunks.append((transcript_id, search_chunks))
 
 
 class FakeUploadFile:
@@ -283,3 +293,143 @@ async def test_ingest_upload_marks_transcript_failed_when_stt_fails() -> None:
     assert repository.updates[0][1].error_message == "provider failed"
     assert repository.inserted_segments == []
     assert repository.inserted_chunks == []
+
+
+# ──────────────────────────────────────────────
+# search chunk indexing 통합 테스트
+# ──────────────────────────────────────────────
+
+class FakeSearchChunkBuilder:
+    """SearchChunkBuilder 의존성 없이 결정론적 child unit을 반환하는 가짜 구현체."""
+
+    def build(self, parent_chunks, _):
+        from schemas.rag import SearchChunkCreate
+        # parent chunk마다 child 1개씩 생성
+        return [
+            SearchChunkCreate(
+                parent_chunk_id=chunk.id,
+                child_index=0,
+                segment_start_index=chunk.segment_start_index or 0,
+                segment_end_index=chunk.segment_end_index or 0,
+                start_seconds=chunk.start_seconds,
+                end_seconds=chunk.end_seconds,
+                text=chunk.text,
+            )
+            for chunk in parent_chunks
+        ]
+
+
+class FakeEmbeddingService:
+    """EmbeddingService를 대체하는 가짜 구현체 — 텍스트 수만큼 더미 벡터를 반환한다."""
+
+    def __init__(self, exception=None) -> None:
+        self._exception = exception
+        self.received_texts: list[list[str]] = []
+
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        self.received_texts.append(texts)
+        if self._exception:
+            raise self._exception
+        # 1536차원 더미 벡터 반환
+        return [[0.1] * 1536 for _ in texts]
+
+
+def _make_chunk_row(segment_start: int, segment_end: int) -> ChunkRow:
+    """테스트용 ChunkRow 생성 헬퍼."""
+    return ChunkRow(
+        id=uuid4(),
+        chunk_index=segment_start,
+        segment_start_index=segment_start,
+        segment_end_index=segment_end,
+        start_seconds=float(segment_start * 4),
+        end_seconds=float(segment_end * 4 + 4),
+        text=f"segment {segment_start}~{segment_end} 텍스트",
+        metadata={},
+    )
+
+
+@pytest.mark.asyncio
+async def test_ingest_creates_transcript_and_saves_chunks_and_search_chunks() -> None:
+    """chunks 저장과 search_chunks 저장이 모두 호출되고 transcript가 completed 상태인지 검증."""
+    repository = FakeRepository()
+    # fetch_chunks_by_transcript가 반환할 parent chunk rows 설정
+    repository._chunk_rows = [_make_chunk_row(0, 1)]
+
+    transcription_service = FakeTranscriptionService(
+        TranscriptionResult(
+            text="첫 번째 발화 두 번째 발화",
+            duration_seconds=10.0,
+            stt_model="whisper-1",
+            segments=[
+                TranscriptionSegment("첫 번째 발화", 0.0, 4.0),
+                TranscriptionSegment("두 번째 발화", 4.0, 8.0),
+            ],
+        )
+    )
+    embedding_service = FakeEmbeddingService()
+    search_chunk_builder = FakeSearchChunkBuilder()
+    planning_service = FakeContextChunkPlanningService()
+
+    service = TranscriptIngestionService(
+        repository,
+        transcription_service,
+        context_chunk_planning_service=planning_service,
+        search_chunk_builder=search_chunk_builder,
+        embedding_service=embedding_service,
+    )
+
+    result = await service.ingest_upload(FakeUploadFile(), domain_type="meeting")
+
+    # transcript 완료 상태 확인
+    assert repository.updates[0][1].status == "completed"
+    # chunks 저장 확인
+    assert len(repository.inserted_chunks) == 1
+    # search_chunks 저장 확인
+    assert len(repository.inserted_search_chunks) == 1
+    transcript_id, saved_search_chunks = repository.inserted_search_chunks[0]
+    assert transcript_id == repository.transcript_id
+    assert len(saved_search_chunks) == 1
+    # embedding이 첨부되어 있는지 확인
+    assert saved_search_chunks[0].embedding == [0.1] * 1536
+    assert saved_search_chunks[0].embedding_model == "text-embedding-3-small"
+    # 결과 객체 정합성 확인
+    assert isinstance(result.transcript_id, UUID)
+    assert result.segment_count == 2
+
+
+@pytest.mark.asyncio
+async def test_ingest_continues_on_search_chunk_failure() -> None:
+    """embedding 실패 시 transcript가 completed 상태를 유지하고 에러 로그가 기록되는지 검증."""
+    repository = FakeRepository()
+    repository._chunk_rows = [_make_chunk_row(0, 0)]
+
+    transcription_service = FakeTranscriptionService(
+        TranscriptionResult(
+            text="발화 내용입니다.",
+            duration_seconds=5.0,
+            stt_model="whisper-1",
+            segments=[TranscriptionSegment("발화 내용입니다.", 0.0, 5.0)],
+        )
+    )
+    # embedding 단계에서 예외 발생하도록 설정
+    embedding_service = FakeEmbeddingService(exception=RuntimeError("embedding API failed"))
+    planning_service = FakeContextChunkPlanningService()
+
+    service = TranscriptIngestionService(
+        repository,
+        transcription_service,
+        context_chunk_planning_service=planning_service,
+        search_chunk_builder=FakeSearchChunkBuilder(),
+        embedding_service=embedding_service,
+    )
+
+    # ingest_upload는 예외 없이 완료되어야 함
+    result = await service.ingest_upload(FakeUploadFile(), domain_type="meeting")
+
+    # transcript는 completed 상태 유지
+    assert repository.updates[0][1].status == "completed"
+    # search_chunks 저장은 호출되지 않음 (embedding 실패로 중단)
+    assert repository.inserted_search_chunks == []
+    # chunks 저장은 정상 완료
+    assert len(repository.inserted_chunks) == 1
+    assert result.chunk_count == 1
