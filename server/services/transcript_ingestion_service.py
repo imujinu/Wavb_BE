@@ -20,6 +20,7 @@ from services.chunk_builder import (
 from services.context_chunk_planning_service import ContextChunkPlanningService
 from services.chunk_metadata_service import ChunkMetadataService
 from services.embedding_service import EmbeddingService
+from services.morpheme_service import MorphemeService
 from services.search_chunk_builder import SearchChunkBuilder
 from services.transcription_service import TranscriptionService, TranscriptionSegment
 
@@ -57,7 +58,15 @@ class TranscriptIngestionService:
             planned_chunk_builder=self._planned_chunk_builder
         )
         # search chunk 생성 및 embedding 서비스는 기본값으로 독립 인스턴스화 가능
-        self._search_chunk_builder = search_chunk_builder or SearchChunkBuilder()
+        # SearchChunkBuilder에 MorphemeService를 주입하여 FTS용 형태소 텍스트 생성 활성화
+        # search_chunk_builder가 외부에서 주입된 경우 그대로 사용 (테스트 편의성 보존)
+        if search_chunk_builder is not None:
+            self._search_chunk_builder = search_chunk_builder
+        else:
+            # 1. MorphemeService 인스턴스 생성 (MeCab 미설치 시 graceful fallback 내장)
+            morpheme_service = MorphemeService()
+            # 2. MorphemeService를 주입한 SearchChunkBuilder 생성
+            self._search_chunk_builder = SearchChunkBuilder(morpheme_service=morpheme_service)
         self._embedding_service = embedding_service or EmbeddingService()
 
     # Create the transcript source row, run STT, and persist the reusable segments.

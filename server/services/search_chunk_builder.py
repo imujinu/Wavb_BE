@@ -1,21 +1,32 @@
 # parent context chunk를 vector search에 최적화된 child search unit으로 분할한다.
 # chunks 테이블의 row를 받아 내부 segment 범위를 adaptive grouping해서 search_chunks 생성 입력값을 만든다.
+# MorphemeService가 주입된 경우 각 child unit의 text_morphemes를 생성하여 FTS 성능을 향상시킨다.
+
+from __future__ import annotations
 
 from schemas.rag import ChunkRow, SearchChunkCreate, SegmentCreate
 
+# 순환 임포트 방지를 위해 타입 힌팅 전용 임포트
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from services.morpheme_service import MorphemeService
+
 
 class SearchChunkBuilder:
-
 
     def __init__(
         self,
         max_segments: int = 4,
         max_chars: int = 800,
         max_seconds: float = 90.0,
+        morpheme_service: MorphemeService | None = None,
     ) -> None:
         self._max_segments = max_segments
         self._max_chars = max_chars
         self._max_seconds = max_seconds
+        # MorphemeService 주입 — None이면 text_morphemes를 생성하지 않고 FTS는 원문 fallback
+        self._morpheme_service = morpheme_service
     # 입력으로 parent chunks와 segments를 받아 각 chunk의 segment 범위에 속하는 segments를 adaptive grouping해서 child search unit 리스트로 반환한다.
     def build(
         self,
@@ -99,12 +110,21 @@ class SearchChunkBuilder:
 
     # segments 리스트를 SearchChunkCreate로 변환한다.
     # parent chunk 정보와 child_index를 함께 기록해 계층 관계를 보존한다.
+    # MorphemeService가 주입된 경우 text_morphemes를 생성하여 FTS 정확도를 향상시킨다.
     def _to_search_chunk(
         self,
         chunk: ChunkRow,
         child_index: int,
         segments: list[SegmentCreate],
     ) -> SearchChunkCreate:
+        # 1. segment 텍스트 결합
+        joined_text = self._join_text(segments)
+
+        # 2. MorphemeService가 주입된 경우 형태소 분석 수행, 없으면 None (FTS에서 원문 fallback)
+        text_morphemes: str | None = None
+        if self._morpheme_service is not None:
+            text_morphemes = self._morpheme_service.tokenize(joined_text)
+
         return SearchChunkCreate(
             parent_chunk_id=chunk.id,
             child_index=child_index,
@@ -112,7 +132,8 @@ class SearchChunkBuilder:
             segment_end_index=segments[-1].segment_index,
             start_seconds=segments[0].start_seconds,
             end_seconds=segments[-1].end_seconds,
-            text=self._join_text(segments),
+            text=joined_text,
+            text_morphemes=text_morphemes,
             metadata={
                 "parent_chunk_index": chunk.chunk_index,
                 "child_goal": "vector_search",

@@ -218,20 +218,22 @@ class RagRepository:
             return
 
         # 2. search_chunks를 일괄 upsert — parent_chunk_id + child_index 충돌 시 전체 필드 갱신
+        # text_morphemes($10): 형태소 분석 결과 텍스트, NULL 허용 (FTS에서 coalesce로 text fallback)
         await self._connection.executemany(
             """
             INSERT INTO search_chunks (
               id, transcript_id, parent_chunk_id, child_index,
               segment_start_index, segment_end_index, start_seconds, end_seconds,
-              text, embedding_model, embedding, metadata
+              text, text_morphemes, embedding_model, embedding, metadata
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::vector, $12::jsonb)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::vector, $13::jsonb)
             ON CONFLICT (parent_chunk_id, child_index) DO UPDATE
             SET segment_start_index = EXCLUDED.segment_start_index,
                 segment_end_index = EXCLUDED.segment_end_index,
                 start_seconds = EXCLUDED.start_seconds,
                 end_seconds = EXCLUDED.end_seconds,
                 text = EXCLUDED.text,
+                text_morphemes = EXCLUDED.text_morphemes,
                 embedding_model = EXCLUDED.embedding_model,
                 embedding = EXCLUDED.embedding,
                 metadata = EXCLUDED.metadata
@@ -247,6 +249,7 @@ class RagRepository:
                     chunk.start_seconds,
                     chunk.end_seconds,
                     chunk.text,
+                    chunk.text_morphemes,
                     chunk.embedding_model,
                     self._to_vector_literal(chunk.embedding),
                     self._to_json(chunk.metadata),

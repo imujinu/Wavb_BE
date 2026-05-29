@@ -266,12 +266,16 @@ async def test_insert_search_chunks_creates_rows() -> None:
     assert "ON CONFLICT (parent_chunk_id, child_index)" in sql
 
     # 첫 번째 행 파라미터 매핑 검증: $2=transcript_id, $3=parent_chunk_id, $4=child_index
+    # text_morphemes($10, index 9) 추가로 embedding_model은 index 10, embedding은 index 11, metadata는 index 12로 이동
     first_row = params[0]
     assert first_row[1] == transcript_id
     assert first_row[2] == parent_chunk_id
     assert first_row[3] == 0
     assert first_row[8] == "첫 번째 검색 청크"
-    assert first_row[9] == "text-embedding-3-small"
+    # index 9: text_morphemes (None — 테스트에서 형태소 서비스 미주입)
+    assert first_row[9] is None
+    # index 10: embedding_model
+    assert first_row[10] == "text-embedding-3-small"
 
     # 두 번째 행도 정상 저장되는지 확인
     assert params[1][3] == 1
@@ -312,9 +316,9 @@ async def test_insert_search_chunks_uses_vector_literal() -> None:
         ],
     )
 
-    # $11 위치(index 10)가 vector literal 형식인지 확인
+    # text_morphemes 추가로 embedding은 $12 위치(index 11)로 이동
     row = connection.executemany_calls[0][1][0]
-    assert row[10] == "[0.1,0.2,0.3]"
+    assert row[11] == "[0.1,0.2,0.3]"
 
 
 @pytest.mark.asyncio
@@ -339,6 +343,6 @@ async def test_insert_search_chunks_uses_json_metadata() -> None:
         ],
     )
 
-    # $12 위치(index 11)가 한글 손실 없는 JSON string인지 확인
+    # text_morphemes 추가로 metadata는 $13 위치(index 12)로 이동
     row = connection.executemany_calls[0][1][0]
-    assert row[11] == '{"주제": "회의", "segment_count": 2}'
+    assert row[12] == '{"주제": "회의", "segment_count": 2}'
