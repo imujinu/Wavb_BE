@@ -259,8 +259,10 @@ class RagRepository:
             ],
         )
 
-    # keyword 검색과 vector 검색을 병렬로 실행하여 가중 합산 점수로 최종 순위를 결정한다.
-    # 단일 검색 방식보다 recall/precision 균형이 높아 RAG 품질을 향상시킨다.
+    # keyword 검색과 vector 검색을 병렬로 실행하여 RRF(Reciprocal Rank Fusion)로 최종 순위를 결정한다.
+    # RRF는 각 채널의 원점수(ts_rank vs cosine similarity)를 직접 더하지 않고 "순위"만 사용한다.
+    # ts_rank(0.0x대)와 vector similarity(0.7~0.9대)는 스케일이 달라 가중 합산이 왜곡되는데,
+    # 순위 기반 융합은 이 스케일 불일치를 원천적으로 제거해 안정적인 하이브리드 순위를 만든다.
     async def search_chunks_hybrid(
         self,
         morpheme_query: str,
@@ -270,45 +272,63 @@ class RagRepository:
         top_k: int,
         keyword_weight: float = 0.6,
         vector_weight: float = 0.4,
+        rrf_k: int = 60,
     ) -> list[SearchChunkHit]:
-      
-        # 1. keyword 검색과 vector 검색을 병렬 실행
+        """
+        기능 요약: 키워드/벡터 검색을 병렬 실행한 뒤 가중 RRF로 융합해 상위 top_k hit을 반환한다.
+
+        기능 흐름:
+            1. _search_by_keyword / _search_by_vector 병렬 실행 (각 채널은 자체 점수순 정렬됨)
+            2. 각 채널의 리스트 인덱스(0-based) → 순위(1-based)로 변환하여 RRF 점수 누적
+               score(doc) = Σ weight_i * 1 / (rrf_k + rank_i)
+               - 한쪽 채널에만 등장한 hit은 그 채널 기여분만 합산됨
+            3. RRF 점수를 score 필드에 담아 SearchChunkHit 재구성
+            4. RRF 점수 내림차순 정렬 후 top_k 반환
+
+        파라미터:
+            morpheme_query: 형태소 분석된 FTS 쿼리 (예: "다음 출시 일정 논의")
+            embedding: 원문 쿼리 임베딩 벡터 (길이 1536)
+            transcript_id / user_id: 검색 범위 한정 필터 (None이면 미적용)
+            top_k: 반환할 최대 hit 수
+            keyword_weight / vector_weight: 채널별 RRF 기여 가중치 (0.6 / 0.4)
+            rrf_k: RRF 완충 상수 — 클수록 상위·하위 순위 간 점수 차가 완만해짐 (관례값 60)
+        """
+        # 1. keyword 검색과 vector 검색을 병렬 실행 (각 결과는 자체 점수 기준 내림차순 정렬 상태)
         keyword_hits, vector_hits = await asyncio.gather(
             self._search_by_keyword(morpheme_query, transcript_id, user_id, top_k),
             self._search_by_vector(embedding, transcript_id, user_id, top_k),
         )
 
-        # 2. 두 결과 모두 id → (hit, raw_score) 딕셔너리로 변환 — 구조 통일로 O(1) 조회 보장
-        keyword_scores: dict[UUID, tuple[SearchChunkHit, float]] = {
-            hit.id: (hit, hit.score) for hit in keyword_hits
-        }
-        vector_scores: dict[UUID, tuple[SearchChunkHit, float]] = {
-            hit.id: (hit, hit.score) for hit in vector_hits
-        }
+        # 2. RRF 점수 누적 — 리스트 순서가 곧 순위이므로 enumerate 인덱스 + 1을 rank로 사용
+        #    source_by_id: score 재계산 후 SearchChunkHit를 복원하기 위한 원본 hit 보관
+        rrf_scores: dict[UUID, float] = {}
+        source_by_id: dict[UUID, SearchChunkHit] = {}
 
-        # 3. 모든 hit id를 합집합으로 수집하여 가중 합산 점수 계산
-        all_ids = set(keyword_scores) | set(vector_scores)
-        merged: list[SearchChunkHit] = []
-        for chunk_id in all_ids:
-            kw_hit, kw_raw = keyword_scores.get(chunk_id, (None, 0.0))
-            vec_hit, vec_raw = vector_scores.get(chunk_id, (None, 0.0))
-            source_hit = kw_hit or vec_hit
+        for rank, hit in enumerate(keyword_hits, start=1):
+            rrf_scores[hit.id] = rrf_scores.get(hit.id, 0.0) + keyword_weight / (rrf_k + rank)
+            source_by_id.setdefault(hit.id, hit)
 
-            merged.append(
-                SearchChunkHit(
-                    id=source_hit.id,
-                    transcript_id=source_hit.transcript_id,
-                    parent_chunk_id=source_hit.parent_chunk_id,
-                    child_index=source_hit.child_index,
-                    start_seconds=source_hit.start_seconds,
-                    end_seconds=source_hit.end_seconds,
-                    text=source_hit.text,
-                    score=keyword_weight * kw_raw + vector_weight * vec_raw,
-                    embedding_model=source_hit.embedding_model,
-                )
+        for rank, hit in enumerate(vector_hits, start=1):
+            rrf_scores[hit.id] = rrf_scores.get(hit.id, 0.0) + vector_weight / (rrf_k + rank)
+            source_by_id.setdefault(hit.id, hit)
+
+        # 3. RRF 점수를 score 필드에 담아 SearchChunkHit 재구성
+        merged: list[SearchChunkHit] = [
+            SearchChunkHit(
+                id=hit.id,
+                transcript_id=hit.transcript_id,
+                parent_chunk_id=hit.parent_chunk_id,
+                child_index=hit.child_index,
+                start_seconds=hit.start_seconds,
+                end_seconds=hit.end_seconds,
+                text=hit.text,
+                score=rrf_scores[chunk_id],
+                embedding_model=hit.embedding_model,
             )
+            for chunk_id, hit in source_by_id.items()
+        ]
 
-        # 5. score 내림차순 정렬 후 top_k 반환
+        # 4. RRF 점수 내림차순 정렬 후 top_k 반환
         merged.sort(key=lambda h: h.score, reverse=True)
         return merged[:top_k]
 
@@ -495,6 +515,7 @@ class RagRepository:
             return []
 
         # 2. ANY 연산자로 일괄 조회 — N+1 쿼리 방지
+        # ANY 연산자는 조건에 맞는 값을 모두 리스트 형태로 리턴 가능 Postgresql 배열 타입 캐스팅
         rows = await self._connection.fetch(
             """
             SELECT
