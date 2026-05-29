@@ -116,30 +116,45 @@ class SearchChunkCreate(BaseModel):
 
 **신규 파일: `server/services/morpheme_service.py`**
 ```python
+from kiwipiepy import Kiwi
+from kiwipiepy.utils import Stopwords
+
+# 검색에 유효한 품사 태그
+_CONTENT_TAGS = {
+    "NNG",  # 일반명사
+    "NNP",  # 고유명사
+    "NNB",  # 의존명사
+    "VV",   # 동사
+    "VA",   # 형용사
+    "MAG",  # 일반부사
+    "SL",   # 외래어
+    "SH",   # 한자
+}
+
 class MorphemeService:
     def __init__(self) -> None:
-        import MeCab
-        self._tagger = MeCab.Tagger()
+        self._kiwi = Kiwi()
 
     def tokenize(self, text: str) -> str:
-        # MeCab으로 형태소 분석 → 명사(NN*)/동사 어간(VV, VA)/부사(MA) 추출
+        # kiwi.tokenize() → Token 목록에서 _CONTENT_TAGS 품사만 필터링 → 공백 구분 문자열
         # 예: "다음 출시 일정을 논의했다" → "다음 출시 일정 논의"
-        # 반환: 공백 구분 morpheme 문자열 (FTS plainto_tsquery 입력용)
+        tokens = self._kiwi.tokenize(text)
+        morphemes = [t.form for t in tokens if t.tag in _CONTENT_TAGS]
+        return " ".join(morphemes) if morphemes else text
 ```
 
 **`pyproject.toml` 추가:**
 ```
-"mecab-python3>=1.0.0"
+"kiwipiepy>=0.18.0"
 ```
 
-**시스템 설치 전제:**
-- macOS: `brew install mecab mecab-ko-dic`
-- Linux: `apt-get install mecab libmecab-dev mecab-ipadic-utf8` + [mecab-ko-dic](https://bitbucket.org/eunjeon/mecab-ko-dic)
-- Windows: 별도 binary 설치 필요 (README에 설치 지침 추가)
+**kiwipiepy 선택 이유:**
+- 순수 Python 패키지 (`pip install kiwipiepy` 만으로 설치 완료, 시스템 의존성 없음)
+- Windows/macOS/Linux 모두 동일하게 동작 — MeCab처럼 플랫폼별 바이너리 설치 불필요
+- 내장 한국어 사전으로 명사·동사·부사 품사 태그 제공
+- `t.tag`로 품사 필터링이 직관적이고, `t.form`이 어간 형태를 반환
 
-**MeCab 선택 이유:**
-- 한국어 형태소 분석 사실상 표준 도구. `mecab-ko-dic` (은전한닢)과 함께 사용 시 Korean 명사/용언 어간 추출 정확도 높음
-- `tokenize()` 실패 시(MeCab 미설치) 원문 텍스트를 그대로 반환해 fallback 가능
+**`tokenize()` fallback 이유:** 형태소 추출 결과가 빈 목록이면 원문 그대로 반환해 검색 누락 방지
 
 **필요성:** MorphemeService 없이는 "일정을" → "일정" 변환 불가 → 키워드 검색 정확도 저하
 
@@ -349,7 +364,7 @@ async def rag_query(
 ### 수정 (5개)
 | 파일 | 변경 내용 |
 |------|-----------|
-| `server/pyproject.toml` | mecab-python3 추가 |
+| `server/pyproject.toml` | kiwipiepy 추가 |
 | `server/schemas/rag.py` | SearchChunkHit, ParentChunkResult, RagQueryRequest/Response 추가, SearchChunkCreate에 text_morphemes 추가 |
 | `server/repositories/rag_repository.py` | hybrid/keyword/vector search + parent hydration 메서드 4개 추가, insert_search_chunks SQL에 text_morphemes 추가 |
 | `server/services/search_chunk_builder.py` | MorphemeService 주입 + text_morphemes 생성 |

@@ -20,6 +20,9 @@ class FakeConnection:
     def __init__(self) -> None:
         self.executed: list[tuple[str, tuple]] = []
         self.executemany_calls: list[tuple[str, list[tuple]]] = []
+        # fetch 호출 시 반환할 가짜 rows 목록 (테스트에서 직접 설정)
+        self.fetch_results: list[list[dict]] = []
+        self.fetch_calls: list[tuple[str, tuple]] = []
 
     async def fetchrow(self, query: str, *args):
         self.executed.append((query, args))
@@ -30,6 +33,13 @@ class FakeConnection:
 
     async def executemany(self, query: str, args: list[tuple]):
         self.executemany_calls.append((query, args))
+
+    async def fetch(self, query: str, *args):
+        # fetch_results에 미리 세팅된 값이 있으면 순서대로 반환, 없으면 빈 리스트
+        self.fetch_calls.append((query, args))
+        if self.fetch_results:
+            return self.fetch_results.pop(0)
+        return []
 
 
 class FakeAcquireContext:
@@ -346,3 +356,381 @@ async def test_insert_search_chunks_uses_json_metadata() -> None:
     # text_morphemes 추가로 metadata는 $13 위치(index 12)로 이동
     row = connection.executemany_calls[0][1][0]
     assert row[12] == '{"주제": "회의", "segment_count": 2}'
+
+
+# --- search_chunks_hybrid / _search_by_keyword / _search_by_vector / get_parent_chunks 테스트 ---
+
+
+def _make_search_chunk_row(
+    chunk_id: UUID,
+    transcript_id: UUID,
+    parent_chunk_id: UUID,
+    score_field: float,
+    field_name: str = "score",
+) -> dict:
+    """테스트용 search_chunks 조회 결과 row를 생성하는 헬퍼 함수"""
+    return {
+        "id": chunk_id,
+        "transcript_id": transcript_id,
+        "parent_chunk_id": parent_chunk_id,
+        "child_index": 0,
+        "start_seconds": 0.0,
+        "end_seconds": 30.0,
+        "text": "테스트 청크 텍스트",
+        "embedding_model": "text-embedding-3-small",
+        field_name: score_field,
+    }
+
+
+@pytest.mark.asyncio
+async def test_search_chunks_hybrid_merges_keyword_and_vector_scores() -> None:
+    # keyword와 vector 양쪽 모두 hit된 경우 가중 합산 점수가 올바르게 계산되는지 검증한다.
+    connection = FakeConnection()
+    repository = RagRepository(connection)
+
+    transcript_id = uuid4()
+    parent_id = uuid4()
+    chunk_id = uuid4()
+
+    # keyword 검색 결과: score=0.8, vector 검색 결과: score=0.9 으로 동일 id hit
+    kw_row = _make_search_chunk_row(chunk_id, transcript_id, parent_id, 0.8, "score")
+    vec_row = _make_search_chunk_row(chunk_id, transcript_id, parent_id, 0.9, "distance")
+    # vec_row의 "distance" 필드를 사용하므로 별도 구성
+    vec_row_actual = {**kw_row, "distance": 0.1}  # score = 1.0 - 0.1 = 0.9
+
+    # fetch 첫 번째 호출: keyword 결과, 두 번째 호출: vector 결과
+    connection.fetch_results = [[kw_row], [vec_row_actual]]
+
+    hits = await repository.search_chunks_hybrid(
+        morpheme_query="테스트 쿼리",
+        embedding=[0.1] * 1536,
+        transcript_id=None,
+        user_id=None,
+        top_k=5,
+    )
+
+    assert len(hits) == 1
+    # 예상 score: 0.6 * 0.8 + 0.4 * 0.9 = 0.48 + 0.36 = 0.84
+    assert abs(hits[0].score - 0.84) < 1e-6
+    assert hits[0].id == chunk_id
+
+
+@pytest.mark.asyncio
+async def test_search_chunks_hybrid_keyword_only_hit() -> None:
+    # keyword에만 hit된 경우 keyword_weight * kw_score만 적용되는지 검증한다.
+    connection = FakeConnection()
+    repository = RagRepository(connection)
+
+    transcript_id = uuid4()
+    parent_id = uuid4()
+    chunk_id = uuid4()
+
+    kw_row = _make_search_chunk_row(chunk_id, transcript_id, parent_id, 0.75, "score")
+    # vector 검색 결과는 빈 리스트 (hit 없음)
+    connection.fetch_results = [[kw_row], []]
+
+    hits = await repository.search_chunks_hybrid(
+        morpheme_query="키워드 전용",
+        embedding=[0.2] * 1536,
+        transcript_id=None,
+        user_id=None,
+        top_k=5,
+    )
+
+    assert len(hits) == 1
+    # 예상 score: 0.6 * 0.75 + 0.4 * 0.0 = 0.45
+    assert abs(hits[0].score - 0.45) < 1e-6
+
+
+@pytest.mark.asyncio
+async def test_search_chunks_hybrid_vector_only_hit() -> None:
+    # vector에만 hit된 경우 vector_weight * vec_score만 적용되는지 검증한다.
+    connection = FakeConnection()
+    repository = RagRepository(connection)
+
+    transcript_id = uuid4()
+    parent_id = uuid4()
+    chunk_id = uuid4()
+
+    # distance=0.2 → score = 1.0 - 0.2 = 0.8
+    vec_row = {
+        "id": chunk_id,
+        "transcript_id": transcript_id,
+        "parent_chunk_id": parent_id,
+        "child_index": 0,
+        "start_seconds": None,
+        "end_seconds": None,
+        "text": "벡터 전용 히트",
+        "embedding_model": "text-embedding-3-small",
+        "distance": 0.2,
+    }
+    # keyword 검색은 빈 결과, vector 검색에 hit
+    connection.fetch_results = [[], [vec_row]]
+
+    hits = await repository.search_chunks_hybrid(
+        morpheme_query="벡터 전용",
+        embedding=[0.3] * 1536,
+        transcript_id=None,
+        user_id=None,
+        top_k=5,
+    )
+
+    assert len(hits) == 1
+    # 예상 score: 0.6 * 0.0 + 0.4 * 0.8 = 0.32
+    assert abs(hits[0].score - 0.32) < 1e-6
+    assert hits[0].start_seconds is None
+    assert hits[0].end_seconds is None
+
+
+@pytest.mark.asyncio
+async def test_search_chunks_hybrid_returns_top_k() -> None:
+    # top_k 제한이 올바르게 적용되는지 검증한다 (결과가 top_k를 초과하지 않음).
+    connection = FakeConnection()
+    repository = RagRepository(connection)
+
+    transcript_id = uuid4()
+    parent_id = uuid4()
+
+    # keyword: 3개 hit, vector: 3개 hit (모두 다른 id)
+    kw_rows = [
+        _make_search_chunk_row(uuid4(), transcript_id, parent_id, 0.9 - i * 0.1, "score")
+        for i in range(3)
+    ]
+    vec_rows = [
+        {**_make_search_chunk_row(uuid4(), transcript_id, parent_id, 0.1, "score"), "distance": 0.1}
+        for _ in range(3)
+    ]
+    connection.fetch_results = [kw_rows, vec_rows]
+
+    hits = await repository.search_chunks_hybrid(
+        morpheme_query="top_k 테스트",
+        embedding=[0.1] * 1536,
+        transcript_id=None,
+        user_id=None,
+        top_k=4,
+    )
+
+    # 총 6개 고유 id이지만 top_k=4이므로 최대 4개 반환
+    assert len(hits) <= 4
+    # score 내림차순 정렬 검증
+    for i in range(len(hits) - 1):
+        assert hits[i].score >= hits[i + 1].score
+
+
+@pytest.mark.asyncio
+async def test_search_by_keyword_builds_correct_sql() -> None:
+    # _search_by_keyword가 transcript_id 필터 없는 경우 올바른 FTS SQL을 생성하는지 검증한다.
+    connection = FakeConnection()
+    repository = RagRepository(connection)
+
+    connection.fetch_results = [[]]
+    await repository._search_by_keyword(
+        morpheme_query="회의 일정",
+        transcript_id=None,
+        user_id=None,
+        top_k=5,
+    )
+
+    assert len(connection.fetch_calls) == 1
+    sql, args = connection.fetch_calls[0]
+    # FTS 쿼리 핵심 요소 포함 여부 검증
+    assert "plainto_tsquery" in sql
+    assert "ts_rank" in sql
+    assert "text_morphemes" in sql
+    assert "coalesce" in sql
+    assert args[0] == "회의 일정"
+
+
+@pytest.mark.asyncio
+async def test_search_by_keyword_adds_transcript_filter() -> None:
+    # transcript_id가 주어졌을 때 WHERE 절에 transcript_id 필터가 추가되는지 검증한다.
+    connection = FakeConnection()
+    repository = RagRepository(connection)
+
+    transcript_id = uuid4()
+    connection.fetch_results = [[]]
+    await repository._search_by_keyword(
+        morpheme_query="필터 테스트",
+        transcript_id=transcript_id,
+        user_id=None,
+        top_k=5,
+    )
+
+    sql, args = connection.fetch_calls[0]
+    assert "sc.transcript_id" in sql
+    # args[0]=morpheme_query, args[1]=transcript_id
+    assert args[1] == transcript_id
+
+
+@pytest.mark.asyncio
+async def test_search_by_keyword_adds_user_id_join() -> None:
+    # user_id가 주어졌을 때 transcripts JOIN이 포함되는지 검증한다.
+    connection = FakeConnection()
+    repository = RagRepository(connection)
+
+    user_id = uuid4()
+    connection.fetch_results = [[]]
+    await repository._search_by_keyword(
+        morpheme_query="사용자 필터",
+        transcript_id=None,
+        user_id=user_id,
+        top_k=5,
+    )
+
+    sql, args = connection.fetch_calls[0]
+    assert "JOIN transcripts t" in sql
+    assert "t.user_id" in sql
+    assert args[1] == user_id
+
+
+@pytest.mark.asyncio
+async def test_search_by_vector_builds_correct_sql() -> None:
+    # _search_by_vector가 pgvector <=> 연산자를 포함한 SQL을 생성하는지 검증한다.
+    connection = FakeConnection()
+    repository = RagRepository(connection)
+
+    connection.fetch_results = [[]]
+    await repository._search_by_vector(
+        embedding=[0.1] * 5,
+        transcript_id=None,
+        user_id=None,
+        top_k=5,
+    )
+
+    sql, args = connection.fetch_calls[0]
+    assert "<=>" in sql
+    assert "::vector" in sql
+    assert "distance" in sql
+    # embedding이 vector literal 형식으로 변환되어 첫 번째 인자로 전달되는지 확인
+    assert args[0].startswith("[")
+    assert args[0].endswith("]")
+
+
+@pytest.mark.asyncio
+async def test_search_by_vector_score_is_one_minus_distance() -> None:
+    # distance=0.3이면 score=0.7이 반환되는지 검증한다.
+    connection = FakeConnection()
+    repository = RagRepository(connection)
+
+    transcript_id = uuid4()
+    parent_id = uuid4()
+    chunk_id = uuid4()
+
+    connection.fetch_results = [[{
+        "id": chunk_id,
+        "transcript_id": transcript_id,
+        "parent_chunk_id": parent_id,
+        "child_index": 1,
+        "start_seconds": 10.0,
+        "end_seconds": 40.0,
+        "text": "거리-점수 변환 테스트",
+        "embedding_model": "text-embedding-3-small",
+        "distance": 0.3,
+    }]]
+
+    hits = await repository._search_by_vector(
+        embedding=[0.1] * 5,
+        transcript_id=None,
+        user_id=None,
+        top_k=5,
+    )
+
+    assert len(hits) == 1
+    assert abs(hits[0].score - 0.7) < 1e-6
+    assert hits[0].child_index == 1
+
+
+@pytest.mark.asyncio
+async def test_get_parent_chunks_empty_ids_returns_empty() -> None:
+    # 빈 목록 전달 시 DB 쿼리 없이 즉시 [] 반환하는지 검증한다.
+    connection = FakeConnection()
+    repository = RagRepository(connection)
+
+    result = await repository.get_parent_chunks([])
+
+    assert result == []
+    assert len(connection.fetch_calls) == 0
+
+
+@pytest.mark.asyncio
+async def test_get_parent_chunks_queries_chunks_table() -> None:
+    # parent_chunk_ids를 ANY($1::uuid[]) 로 조회하는지 검증한다.
+    connection = FakeConnection()
+    repository = RagRepository(connection)
+
+    chunk_id = uuid4()
+    transcript_id = uuid4()
+
+    connection.fetch_results = [[{
+        "id": chunk_id,
+        "transcript_id": transcript_id,
+        "domain_type": "meeting",
+        "chunk_index": 0,
+        "topic": "일정",
+        "subtopic": "주간 회의",
+        "keywords": ["일정", "프로젝트"],
+        "speaker_labels": ["speaker_1"],
+        "start_seconds": 0.0,
+        "end_seconds": 60.0,
+        "text": "주간 프로젝트 일정 논의",
+        "summary": "일정 논의 요약",
+        "metadata": {"decision_flag": True},
+    }]]
+
+    results = await repository.get_parent_chunks([chunk_id])
+
+    assert len(results) == 1
+    result = results[0]
+    assert result.id == chunk_id
+    assert result.transcript_id == transcript_id
+    assert result.domain_type == "meeting"
+    assert result.topic == "일정"
+    assert result.keywords == ["일정", "프로젝트"]
+    assert result.speaker_labels == ["speaker_1"]
+    assert abs(result.end_seconds - 60.0) < 1e-6
+    assert result.summary == "일정 논의 요약"
+
+    # ANY($1::uuid[]) 패턴이 SQL에 포함되는지 확인
+    sql, args = connection.fetch_calls[0]
+    assert "ANY" in sql
+    assert "uuid[]" in sql
+    assert "chunks" in sql
+    assert args[0] == [chunk_id]
+
+
+@pytest.mark.asyncio
+async def test_get_parent_chunks_handles_null_optional_fields() -> None:
+    # NULL 가능 필드(topic, summary, start/end_seconds 등)가 None으로 올바르게 매핑되는지 검증한다.
+    connection = FakeConnection()
+    repository = RagRepository(connection)
+
+    chunk_id = uuid4()
+    transcript_id = uuid4()
+
+    connection.fetch_results = [[{
+        "id": chunk_id,
+        "transcript_id": transcript_id,
+        "domain_type": "lecture",
+        "chunk_index": 2,
+        "topic": None,
+        "subtopic": None,
+        "keywords": [],
+        "speaker_labels": [],
+        "start_seconds": None,
+        "end_seconds": None,
+        "text": "강의 내용",
+        "summary": None,
+        "metadata": None,
+    }]]
+
+    results = await repository.get_parent_chunks([chunk_id])
+
+    assert len(results) == 1
+    result = results[0]
+    assert result.topic is None
+    assert result.subtopic is None
+    assert result.keywords == []
+    assert result.start_seconds is None
+    assert result.end_seconds is None
+    assert result.summary is None
+    assert result.metadata == {}
