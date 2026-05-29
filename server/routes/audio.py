@@ -5,7 +5,9 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, s
 from pydantic import BaseModel
 
 from db.connection import DatabaseConnection, get_connection
+from dependencies.auth import get_current_user
 from repositories.rag_repository import RagRepository
+from schemas.auth import CurrentUser
 from schemas.rag import DomainType
 from services.summary_service import SummaryService
 from services.transcript_ingestion_service import TranscriptIngestionService
@@ -72,17 +74,19 @@ async def create_audio_transcript(
     file: UploadFile = File(...),
     domain_type: DomainType = Form("meeting"),
     title: str | None = Form(None),
-    user_id: UUID | None = Form(None),
+    # user_id는 클라이언트 입력 대신 JWT 토큰에서 추출한 인증 사용자로 대체
+    current_user: CurrentUser = Depends(get_current_user),
     repository: RagRepository = Depends(get_rag_repository),
 ) -> AudioTranscriptResponse:
     validate_audio_file(file)
 
     ingestion_service = TranscriptIngestionService(repository)
+    # 1. 인증된 사용자의 user_id를 토큰에서 주입하여 인제스션 실행
     result = await ingestion_service.ingest_upload(
         file=file,
         domain_type=domain_type,
         title=title,
-        user_id=user_id,
+        user_id=current_user.user_id,
     )
     return AudioTranscriptResponse(
         transcript_id=result.transcript_id,

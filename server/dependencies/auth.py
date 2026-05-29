@@ -16,14 +16,7 @@ _bearer = HTTPBearer()
 async def get_auth_service(
     connection: DatabaseConnection = Depends(get_connection),
 ) -> AsyncIterator[AuthService]:
-    """
-    기능 요약: 요청 범위(request-scoped) AuthService 인스턴스를 생성하여 의존성으로 주입한다.
-    routes/audio.py의 get_rag_repository 패턴과 동일하게 connection을 주입받아 서비스를 구성한다.
-
-    기능 흐름:
-        1. get_connection에서 획득한 DB 커넥션으로 AuthRepository 생성
-        2. AuthRepository를 AuthService에 주입하여 yield
-    """
+ 
     # 1. DB 커넥션을 AuthRepository에 주입
     # 2. AuthRepository를 AuthService에 주입하여 요청 범위 인스턴스 생성
     yield AuthService(AuthRepository(connection))
