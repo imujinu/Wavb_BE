@@ -37,12 +37,6 @@ class Settings(BaseSettings):
         "http://localhost:8081,http://localhost:19006",
         alias="ALLOWED_ORIGINS",
     )
-    # RAG 챗봇 설정: 검색 및 답변 생성 관련 파라미터
-    rag_search_top_k: int = Field(12, alias="RAG_SEARCH_TOP_K")
-    rag_parent_top_k: int = Field(5, alias="RAG_PARENT_TOP_K")
-    rag_min_confidence: float = Field(0.35, alias="RAG_MIN_CONFIDENCE")
-    rag_max_context_chars: int = Field(6000, alias="RAG_MAX_CONTEXT_CHARS")
-    web_search_api_key: str = Field("", alias="WEB_SEARCH_API_KEY")
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

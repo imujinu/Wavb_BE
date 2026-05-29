@@ -20,7 +20,6 @@ class FakeConnection:
     def __init__(self) -> None:
         self.executed: list[tuple[str, tuple]] = []
         self.executemany_calls: list[tuple[str, list[tuple]]] = []
-        self.fetch_rows: list[dict] = []
 
     async def fetchrow(self, query: str, *args):
         self.executed.append((query, args))
@@ -28,10 +27,6 @@ class FakeConnection:
 
     async def execute(self, query: str, *args):
         self.executed.append((query, args))
-
-    async def fetch(self, query: str, *args):
-        self.executed.append((query, args))
-        return self.fetch_rows
 
     async def executemany(self, query: str, args: list[tuple]):
         self.executemany_calls.append((query, args))
@@ -222,32 +217,6 @@ async def test_repository_inserts_segments_and_chunks() -> None:
     assert connection.executemany_calls[1][1][0][2] == "meeting"
     assert connection.executemany_calls[1][1][0][13] == ["일정"]
     assert connection.executemany_calls[1][1][0][17] == "[0.1,0.2,0.3]"
-
-
-@pytest.mark.asyncio
-async def test_fetch_chunks_by_transcript_decodes_json_metadata() -> None:
-    connection = FakeConnection()
-    repository = RagRepository(connection)
-    transcript_id = uuid4()
-    chunk_id = uuid4()
-    connection.fetch_rows = [
-        {
-            "id": chunk_id,
-            "chunk_index": 0,
-            "segment_start_index": 0,
-            "segment_end_index": 1,
-            "start_seconds": 0,
-            "end_seconds": 8,
-            "text": "parent chunk text",
-            "metadata": '{"concepts": ["answer"], "segment_count": 2}',
-        }
-    ]
-
-    chunks = await repository.fetch_chunks_by_transcript(transcript_id)
-
-    assert len(chunks) == 1
-    assert chunks[0].id == chunk_id
-    assert chunks[0].metadata == {"concepts": ["answer"], "segment_count": 2}
 
 
 @pytest.mark.asyncio

@@ -187,7 +187,7 @@ class RagRepository:
                 start_seconds=float(row["start_seconds"]) if row["start_seconds"] is not None else None,
                 end_seconds=float(row["end_seconds"]) if row["end_seconds"] is not None else None,
                 text=row["text"],
-                metadata=self._to_dict(row["metadata"]),
+                metadata=row["metadata"] if row["metadata"] is not None else {},
             )
             for row in rows
         ]
@@ -258,14 +258,6 @@ class RagRepository:
     # JSONB column에 넣을 metadata를 한글 손실 없이 문자열로 직렬화한다.
     def _to_json(self, value: dict[str, Any]) -> str:
         return json.dumps(value, ensure_ascii=False)
-
-    def _to_dict(self, value: Any) -> dict[str, Any]:
-        if isinstance(value, dict):
-            return value
-        if isinstance(value, str):
-            parsed = json.loads(value)
-            return parsed if isinstance(parsed, dict) else {}
-        return {}
 
     # pgvector가 adapter 없이도 받을 수 있는 literal 문자열로 embedding을 직렬화한다.
     def _to_vector_literal(self, embedding: list[float] | None) -> str | None:
