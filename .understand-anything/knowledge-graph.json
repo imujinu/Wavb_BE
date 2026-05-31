@@ -1,0 +1,3729 @@
+{
+  "version": "1.0.0",
+  "project": {
+    "name": "recordoc-be",
+    "languages": [
+      "config",
+      "json",
+      "markdown",
+      "python",
+      "sql",
+      "toml",
+      "unknown",
+      "yaml"
+    ],
+    "frameworks": [
+      "FastAPI",
+      "Uvicorn",
+      "Pytest",
+      "Docker Compose"
+    ],
+    "description": "오디오 파일을 검색 가능한 텍스트 청크로 변환하는 FastAPI 백엔드입니다. OpenAI Whisper로 음성을 전사하고 GPT로 요약·메타데이터를 보강한 뒤, pgvector를 사용하는 PostgreSQL에 저장하여 RAG(Retrieval-Augmented Generation) 기반 검색을 제공합니다.",
+    "analyzedAt": "2026-05-31T00:45:43.301Z",
+    "gitCommitHash": "b37094afe4fea7aef8e5344284284895bb6670e6"
+  },
+  "nodes": [
+    {
+      "id": "file:server/schemas/__init__.py",
+      "type": "file",
+      "name": "__init__.py",
+      "filePath": "server/schemas/__init__.py",
+      "summary": "schemas 패키지의 barrel 모듈로, rag.py에 정의된 Pydantic 모델들을 재노출(re-export)하여 패키지 진입점 역할을 한다.",
+      "tags": [
+        "entry-point",
+        "barrel",
+        "type-definition",
+        "schema"
+      ],
+      "complexity": "simple",
+      "languageNotes": "Python 패키지의 __init__.py를 활용한 barrel 패턴."
+    },
+    {
+      "id": "file:server/schemas/rag.py",
+      "type": "file",
+      "name": "rag.py",
+      "filePath": "server/schemas/rag.py",
+      "summary": "RAG 파이프라인 전반에서 사용하는 Pydantic 도메인 모델(transcript, segment, chunk, search chunk, 쿼리 요청/응답)을 정의한다. 시간 범위 및 빈 값 검증 로직을 포함한다.",
+      "tags": [
+        "data-model",
+        "type-definition",
+        "schema",
+        "validation"
+      ],
+      "complexity": "moderate",
+      "languageNotes": "Pydantic field_validator로 시간 범위(start<end) 및 빈 문자열 정규화를 수행."
+    },
+    {
+      "id": "class:server/schemas/rag.py:SegmentCreate",
+      "type": "class",
+      "name": "SegmentCreate",
+      "filePath": "server/schemas/rag.py",
+      "lineRange": [
+        37,
+        52
+      ],
+      "summary": "STT 결과의 원자적 단위인 segment 생성 모델로, 인덱스·시작/종료 시간·화자 레이블·신뢰도를 담으며 시간 범위 유효성을 검증한다.",
+      "tags": [
+        "data-model",
+        "validation",
+        "schema"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "class:server/schemas/rag.py:ChunkCreate",
+      "type": "class",
+      "name": "ChunkCreate",
+      "filePath": "server/schemas/rag.py",
+      "lineRange": [
+        55,
+        96
+      ],
+      "summary": "검색용 retrieval chunk 생성 모델로 텍스트·주제·키워드·임베딩 등을 담으며, 빈 값 정규화와 인덱스/시간 범위 검증을 수행한다.",
+      "tags": [
+        "data-model",
+        "validation",
+        "schema",
+        "embedding"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:server/schemas/rag.py:SearchChunkCreate",
+      "type": "class",
+      "name": "SearchChunkCreate",
+      "filePath": "server/schemas/rag.py",
+      "lineRange": [
+        116,
+        129
+      ],
+      "summary": "하이브리드 검색용 자식(child) chunk 생성 모델로, 부모 chunk 참조·형태소 분석 텍스트·임베딩 정보를 담는다.",
+      "tags": [
+        "data-model",
+        "schema",
+        "embedding"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:server/services/chunk_builder.py",
+      "type": "file",
+      "name": "chunk_builder.py",
+      "filePath": "server/services/chunk_builder.py",
+      "summary": "STT segment들로부터 retrieval chunk를 만드는 다양한 빌더 전략(회의/강의/LLM 계획 기반/결정론적 fallback)과 도메인별 빌더 선택 팩토리를 제공한다.",
+      "tags": [
+        "service",
+        "factory",
+        "data-pipeline",
+        "strategy",
+        "tested"
+      ],
+      "complexity": "complex",
+      "languageNotes": "Protocol 기반 전략 패턴으로 도메인별 청킹 알고리즘을 교체 가능하게 구성."
+    },
+    {
+      "id": "class:server/services/chunk_builder.py:MeetingChunkBuilder",
+      "type": "class",
+      "name": "MeetingChunkBuilder",
+      "filePath": "server/services/chunk_builder.py",
+      "lineRange": [
+        15,
+        115
+      ],
+      "summary": "회의 도메인용 청크 빌더로, 화자 전환과 토큰 한도를 기준으로 segment를 chunk 경계로 분할한다.",
+      "tags": [
+        "service",
+        "data-pipeline",
+        "strategy"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:server/services/chunk_builder.py:LectureChunkBuilder",
+      "type": "class",
+      "name": "LectureChunkBuilder",
+      "filePath": "server/services/chunk_builder.py",
+      "lineRange": [
+        118,
+        220
+      ],
+      "summary": "강의 도메인용 청크 빌더로, 더 큰 컨텍스트 윈도우와 overlap tail을 사용해 경계 손실 없이 chunk를 생성한다.",
+      "tags": [
+        "service",
+        "data-pipeline",
+        "strategy"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:server/services/chunk_builder.py:ContextPlannedChunkBuilder",
+      "type": "class",
+      "name": "ContextPlannedChunkBuilder",
+      "filePath": "server/services/chunk_builder.py",
+      "lineRange": [
+        223,
+        313
+      ],
+      "summary": "LLM이 산출한 의미 기반 청크 계획(plan group)을 받아 해당 범위대로 chunk를 생성하고 계획 메타데이터를 보존한다.",
+      "tags": [
+        "service",
+        "data-pipeline",
+        "llm"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:server/services/chunk_builder.py:DeterministicFallbackChunkBuilder",
+      "type": "class",
+      "name": "DeterministicFallbackChunkBuilder",
+      "filePath": "server/services/chunk_builder.py",
+      "lineRange": [
+        316,
+        385
+      ],
+      "summary": "LLM 청크 계획 실패 시 동작하는 결정론적 fallback 빌더로, 안전한 시간 범위 기반 plan group을 생성해 ContextPlannedChunkBuilder에 위임한다.",
+      "tags": [
+        "service",
+        "data-pipeline",
+        "fallback"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:server/services/chunk_builder.py:get_chunk_builder",
+      "type": "function",
+      "name": "get_chunk_builder",
+      "filePath": "server/services/chunk_builder.py",
+      "lineRange": [
+        389,
+        394
+      ],
+      "summary": "domain_type에 따라 적절한 청크 빌더(회의/강의)를 반환하는 팩토리 함수.",
+      "tags": [
+        "factory",
+        "utility"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:server/services/chunk_metadata_service.py",
+      "type": "file",
+      "name": "chunk_metadata_service.py",
+      "filePath": "server/services/chunk_metadata_service.py",
+      "summary": "OpenAI LLM을 사용해 chunk에 주제·하위주제·키워드·요약 등의 메타데이터를 동시성 제한 하에 보강하는 서비스. 실패 시 원본 chunk를 보존한다.",
+      "tags": [
+        "service",
+        "llm",
+        "data-pipeline",
+        "metadata",
+        "tested"
+      ],
+      "complexity": "complex",
+      "languageNotes": "asyncio.Semaphore와 gather로 LLM 호출 동시성을 제어."
+    },
+    {
+      "id": "class:server/services/chunk_metadata_service.py:ChunkMetadataService",
+      "type": "class",
+      "name": "ChunkMetadataService",
+      "filePath": "server/services/chunk_metadata_service.py",
+      "lineRange": [
+        29,
+        228
+      ],
+      "summary": "chunk 리스트를 받아 LLM으로 메타데이터를 생성·파싱·적용하는 보강 서비스. 입력 순서를 보존하며 프로바이더/JSON 오류 시 원본을 반환한다.",
+      "tags": [
+        "service",
+        "llm",
+        "metadata",
+        "serialization"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:server/services/context_chunk_planning_service.py",
+      "type": "file",
+      "name": "context_chunk_planning_service.py",
+      "filePath": "server/services/context_chunk_planning_service.py",
+      "summary": "LLM을 사용해 segment들의 의미 기반 청크 경계(plan group)를 계획하고, 파싱·범위 검증을 거쳐 실패 시 결정론적 fallback 계획으로 대체하는 서비스.",
+      "tags": [
+        "service",
+        "llm",
+        "data-pipeline",
+        "validation",
+        "tested"
+      ],
+      "complexity": "complex",
+      "languageNotes": "LLM 응답의 인덱스 커버리지·중복을 검증하고 실패 시 deterministic fallback으로 graceful degradation."
+    },
+    {
+      "id": "class:server/services/context_chunk_planning_service.py:ContextChunkPlanningService",
+      "type": "class",
+      "name": "ContextChunkPlanningService",
+      "filePath": "server/services/context_chunk_planning_service.py",
+      "lineRange": [
+        33,
+        324
+      ],
+      "summary": "LLM 청크 계획 요청·파싱·검증·fallback 로직을 담은 서비스 클래스로, 도메인별 프롬프트를 구성하고 유효한 plan group을 산출한다.",
+      "tags": [
+        "service",
+        "llm",
+        "validation",
+        "fallback"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:server/services/search_chunk_builder.py",
+      "type": "file",
+      "name": "search_chunk_builder.py",
+      "filePath": "server/services/search_chunk_builder.py",
+      "summary": "부모 chunk를 더 작은 자식(child) 검색 단위로 적응적으로 분할하는 빌더로, 문자/시간 한도를 지키며 형태소 분석을 통해 하이브리드 검색용 SearchChunk를 생성한다.",
+      "tags": [
+        "service",
+        "data-pipeline",
+        "search",
+        "tested"
+      ],
+      "complexity": "moderate",
+      "languageNotes": "parent-child 청킹 구조로 하이브리드(키워드+벡터) 검색을 지원."
+    },
+    {
+      "id": "class:server/services/search_chunk_builder.py:SearchChunkBuilder",
+      "type": "class",
+      "name": "SearchChunkBuilder",
+      "filePath": "server/services/search_chunk_builder.py",
+      "lineRange": [
+        16,
+        147
+      ],
+      "summary": "부모 chunk 범위 내 segment들을 문자/시간 한도 기준으로 묶어 자식 검색 chunk를 만들고, 형태소 토큰화 텍스트를 부여한다.",
+      "tags": [
+        "service",
+        "data-pipeline",
+        "search"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:server/services/transcript_ingestion_service.py",
+      "type": "file",
+      "name": "transcript_ingestion_service.py",
+      "filePath": "server/services/transcript_ingestion_service.py",
+      "summary": "오디오 인제스천 파이프라인 전체를 조율하는 최상위 오케스트레이터로, 전사·청크 생성·메타데이터 보강·검색 chunk 인덱싱·DB 영속화를 순차 수행한다.",
+      "tags": [
+        "service",
+        "orchestration",
+        "data-pipeline",
+        "entry-point",
+        "tested"
+      ],
+      "complexity": "complex",
+      "languageNotes": "여러 하위 서비스를 의존성으로 주입받아 단계별 파이프라인을 구성하며, 검색 chunk 인덱싱 실패는 비치명적으로 처리."
+    },
+    {
+      "id": "class:server/services/transcript_ingestion_service.py:TranscriptIngestionService",
+      "type": "class",
+      "name": "TranscriptIngestionService",
+      "filePath": "server/services/transcript_ingestion_service.py",
+      "lineRange": [
+        40,
+        271
+      ],
+      "summary": "업로드된 오디오를 받아 transcript 생성→STT→segment/chunk 영속화→메타데이터 보강→검색 chunk 인덱싱까지 전 과정을 실행하는 핵심 오케스트레이션 서비스.",
+      "tags": [
+        "service",
+        "orchestration",
+        "data-pipeline"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:server/tests/test_chunk_builder.py",
+      "type": "file",
+      "name": "test_chunk_builder.py",
+      "filePath": "server/tests/test_chunk_builder.py",
+      "summary": "chunk_builder의 각 빌더 전략(회의 분할, 강의 overlap, LLM 계획 보존, fallback 안전 범위, 도메인 팩토리 선택)을 검증하는 단위 테스트.",
+      "tags": [
+        "test",
+        "unit-test",
+        "data-pipeline"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:server/tests/test_chunk_metadata_service.py",
+      "type": "file",
+      "name": "test_chunk_metadata_service.py",
+      "filePath": "server/tests/test_chunk_metadata_service.py",
+      "summary": "ChunkMetadataService의 프롬프트 구성, 회의/강의 메타데이터 보강, 실패 시 원본 유지, 입력 순서 보존을 가짜 LLM 응답으로 검증하는 단위 테스트.",
+      "tags": [
+        "test",
+        "unit-test",
+        "llm",
+        "metadata"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:server/tests/test_context_chunk_planning_service.py",
+      "type": "file",
+      "name": "test_context_chunk_planning_service.py",
+      "filePath": "server/tests/test_context_chunk_planning_service.py",
+      "summary": "ContextChunkPlanningService의 도메인 프롬프트, 회의/강의 그룹 파싱, JSON 오류 및 잘못된 범위에 대한 fallback 동작을 검증하는 단위 테스트.",
+      "tags": [
+        "test",
+        "unit-test",
+        "llm",
+        "validation"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:server/tests/test_search_chunk_builder.py",
+      "type": "file",
+      "name": "test_search_chunk_builder.py",
+      "filePath": "server/tests/test_search_chunk_builder.py",
+      "summary": "SearchChunkBuilder의 적응적 그룹화가 부모 범위를 벗어나지 않고, 짧은 segment 묶기·긴 segment 단독 분리·문자/시간 한도 준수를 검증하는 단위 테스트.",
+      "tags": [
+        "test",
+        "unit-test",
+        "search"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:server/tests/test_transcript_ingestion_service.py",
+      "type": "file",
+      "name": "test_transcript_ingestion_service.py",
+      "filePath": "server/tests/test_transcript_ingestion_service.py",
+      "summary": "Fake 의존성을 사용해 TranscriptIngestionService의 영속화, 메타데이터 보강, LLM 계획/ fallback 청크, STT 실패 처리, 검색 chunk 인덱싱 실패 시 계속 진행을 검증하는 통합 단위 테스트.",
+      "tags": [
+        "test",
+        "integration-test",
+        "orchestration",
+        "data-pipeline"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:server/db/connection.py",
+      "type": "file",
+      "name": "connection.py",
+      "filePath": "server/db/connection.py",
+      "summary": "asyncpg 기반 PostgreSQL 비동기 커넥션 풀을 관리하며, 전역 Database 싱글톤과 FastAPI 요청용 커넥션 의존성을 제공한다.",
+      "tags": [
+        "database",
+        "connection-pool",
+        "asyncpg",
+        "singleton",
+        "dependency"
+      ],
+      "complexity": "moderate",
+      "languageNotes": "전역 lru_cache 스타일 get_database 싱글톤과 async context manager(get_connection)를 함께 사용해 풀 수명주기를 관리한다."
+    },
+    {
+      "id": "class:server/db/connection.py:Database",
+      "type": "class",
+      "name": "Database",
+      "filePath": "server/db/connection.py",
+      "lineRange": [
+        17,
+        54
+      ],
+      "summary": "asyncpg 커넥션 풀의 생성·종료와 접근을 캡슐화하며, 풀이 초기화되지 않은 경우 HTTPException을 발생시킨다.",
+      "tags": [
+        "database",
+        "connection-pool",
+        "asyncpg",
+        "lifecycle"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:server/db/connection.py:DatabaseConnection",
+      "type": "class",
+      "name": "DatabaseConnection",
+      "filePath": "server/db/connection.py",
+      "lineRange": [
+        9,
+        14
+      ],
+      "summary": "execute/fetchrow/executemany를 노출하는 DB 커넥션 프로토콜로, 레포지토리 계층의 타입 의존성을 추상화한다.",
+      "tags": [
+        "type-definition",
+        "protocol",
+        "database",
+        "abstraction"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/db/connection.py:get_connection",
+      "type": "function",
+      "name": "get_connection",
+      "filePath": "server/db/connection.py",
+      "lineRange": [
+        78,
+        82
+      ],
+      "summary": "풀에서 커넥션을 획득해 yield하는 FastAPI 의존성으로, 라우트 핸들러에 DB 커넥션을 주입한다.",
+      "tags": [
+        "dependency",
+        "database",
+        "async",
+        "connection-pool"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:server/dependencies/auth.py",
+      "type": "file",
+      "name": "auth.py",
+      "filePath": "server/dependencies/auth.py",
+      "summary": "AuthService 생성 의존성과 JWT 기반 현재 사용자 인증 의존성을 정의하여 라우트에서 인증을 처리한다.",
+      "tags": [
+        "dependency",
+        "authentication",
+        "jwt",
+        "middleware"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/dependencies/auth.py:get_current_user",
+      "type": "function",
+      "name": "get_current_user",
+      "filePath": "server/dependencies/auth.py",
+      "lineRange": [
+        25,
+        31
+      ],
+      "summary": "HTTP Bearer 자격증명을 받아 AuthService로 access token을 디코딩하고 현재 사용자(CurrentUser)를 반환하는 인증 의존성이다.",
+      "tags": [
+        "authentication",
+        "jwt",
+        "dependency",
+        "security"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:server/main.py",
+      "type": "file",
+      "name": "main.py",
+      "filePath": "server/main.py",
+      "summary": "FastAPI 애플리케이션 진입점으로 audio·auth·rag 라우터를 등록하고 health 체크 엔드포인트를 제공한다.",
+      "tags": [
+        "entry-point",
+        "fastapi",
+        "application",
+        "router",
+        "tested"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:server/repositories/auth_repository.py",
+      "type": "file",
+      "name": "auth_repository.py",
+      "filePath": "server/repositories/auth_repository.py",
+      "summary": "asyncpg 커넥션으로 사용자 생성과 이메일 조회를 수행하는 인증 레포지토리이다.",
+      "tags": [
+        "repository",
+        "database",
+        "authentication",
+        "data-access"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "class:server/repositories/auth_repository.py:AuthRepository",
+      "type": "class",
+      "name": "AuthRepository",
+      "filePath": "server/repositories/auth_repository.py",
+      "lineRange": [
+        6,
+        51
+      ],
+      "summary": "users 테이블에 사용자를 생성하고 이메일로 조회하는 데이터 접근 클래스로, asyncpg fetchrow를 사용한다.",
+      "tags": [
+        "repository",
+        "database",
+        "authentication",
+        "data-access"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:server/routes/__init__.py",
+      "type": "file",
+      "name": "__init__.py",
+      "filePath": "server/routes/__init__.py",
+      "summary": "routes 패키지를 정의하는 빈 패키지 초기화 파일이다.",
+      "tags": [
+        "entry-point",
+        "package",
+        "barrel"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:server/routes/audio.py",
+      "type": "file",
+      "name": "audio.py",
+      "filePath": "server/routes/audio.py",
+      "summary": "오디오 업로드를 처리하는 FastAPI 라우터로, 요약 전용(/audio/summarize)과 전체 인제스천(/audio/transcripts) 엔드포인트를 노출한다.",
+      "tags": [
+        "api-handler",
+        "router",
+        "audio",
+        "fastapi",
+        "endpoint",
+        "tested"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "endpoint:server/routes/audio.py:POST-/audio/summarize",
+      "type": "endpoint",
+      "name": "POST /audio/summarize",
+      "filePath": "server/routes/audio.py",
+      "lineRange": [
+        54,
+        69
+      ],
+      "summary": "오디오 파일을 Whisper로 전사한 뒤 GPT로 요약하여 transcript와 summary를 반환하는 엔드포인트로, DB 영속화는 하지 않는다.",
+      "tags": [
+        "api-handler",
+        "endpoint",
+        "audio",
+        "transcription",
+        "summarization"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "endpoint:server/routes/audio.py:POST-/audio/transcripts",
+      "type": "endpoint",
+      "name": "POST /audio/transcripts",
+      "filePath": "server/routes/audio.py",
+      "lineRange": [
+        72,
+        98
+      ],
+      "summary": "인증된 사용자의 오디오를 전체 인제스천 파이프라인으로 처리하여 전사·청크를 DB에 영속화하는 엔드포인트이다.",
+      "tags": [
+        "api-handler",
+        "endpoint",
+        "audio",
+        "rag",
+        "ingestion"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:server/routes/audio.py:validate_audio_file",
+      "type": "function",
+      "name": "validate_audio_file",
+      "filePath": "server/routes/audio.py",
+      "lineRange": [
+        42,
+        51
+      ],
+      "summary": "업로드 파일의 확장자가 허용 목록에 속하는지 검증하고, 미지원 시 400 HTTPException을 발생시킨다.",
+      "tags": [
+        "validation",
+        "audio",
+        "utility"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:server/routes/auth.py",
+      "type": "file",
+      "name": "auth.py",
+      "filePath": "server/routes/auth.py",
+      "summary": "회원가입(/auth/register)과 로그인(/auth/login) 엔드포인트를 노출하고 AuthService에 비즈니스 로직을 위임하는 인증 라우터이다.",
+      "tags": [
+        "api-handler",
+        "router",
+        "authentication",
+        "fastapi",
+        "endpoint"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "endpoint:server/routes/auth.py:POST-/auth/register",
+      "type": "endpoint",
+      "name": "POST /auth/register",
+      "filePath": "server/routes/auth.py",
+      "lineRange": [
+        18,
+        35
+      ],
+      "summary": "신규 사용자를 등록하고 생성된 사용자 UUID를 반환하는 회원가입 엔드포인트이다.",
+      "tags": [
+        "api-handler",
+        "endpoint",
+        "authentication",
+        "registration"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "endpoint:server/routes/auth.py:POST-/auth/login",
+      "type": "endpoint",
+      "name": "POST /auth/login",
+      "filePath": "server/routes/auth.py",
+      "lineRange": [
+        38,
+        50
+      ],
+      "summary": "이메일·비밀번호를 검증하고 access·refresh JWT 토큰을 발급하는 로그인 엔드포인트이다.",
+      "tags": [
+        "api-handler",
+        "endpoint",
+        "authentication",
+        "jwt",
+        "login"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:server/schemas/auth.py",
+      "type": "file",
+      "name": "auth.py",
+      "filePath": "server/schemas/auth.py",
+      "summary": "인증 도메인의 Pydantic 모델(UserCreate, UserLogin, TokenResponse, CurrentUser)을 정의한다.",
+      "tags": [
+        "data-model",
+        "schema",
+        "authentication",
+        "type-definition",
+        "validation"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:server/services/auth_service.py",
+      "type": "file",
+      "name": "auth_service.py",
+      "filePath": "server/services/auth_service.py",
+      "summary": "bcrypt 비밀번호 해싱과 JWT 토큰 발급·검증을 담당하는 인증 비즈니스 로직 서비스이다.",
+      "tags": [
+        "service",
+        "authentication",
+        "jwt",
+        "bcrypt",
+        "security",
+        "tested"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:server/services/auth_service.py:AuthService",
+      "type": "class",
+      "name": "AuthService",
+      "filePath": "server/services/auth_service.py",
+      "lineRange": [
+        14,
+        131
+      ],
+      "summary": "회원가입(중복 검사·bcrypt 해싱), 로그인(검증·access/refresh JWT 발급), access token 디코딩을 수행하는 인증 서비스 클래스이다.",
+      "tags": [
+        "service",
+        "authentication",
+        "jwt",
+        "bcrypt",
+        "security"
+      ],
+      "complexity": "complex",
+      "languageNotes": "bcrypt 해싱과 jwt.encode를 asyncio.to_thread로 오프로딩해 이벤트 루프 블로킹을 방지한다."
+    },
+    {
+      "id": "file:server/tests/test_audio_routes.py",
+      "type": "file",
+      "name": "test_audio_routes.py",
+      "filePath": "server/tests/test_audio_routes.py",
+      "summary": "오디오 라우트(/audio/summarize, /audio/transcripts)와 health 엔드포인트를 monkeypatch와 TestClient로 검증하는 통합 테스트이다.",
+      "tags": [
+        "test",
+        "api-handler",
+        "audio",
+        "integration-test"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:server/tests/test_auth_service.py",
+      "type": "file",
+      "name": "test_auth_service.py",
+      "filePath": "server/tests/test_auth_service.py",
+      "summary": "AuthService의 회원가입·로그인·토큰 디코딩 로직을 FakeAuthRepository로 격리해 검증하는 단위 테스트이다.",
+      "tags": [
+        "test",
+        "authentication",
+        "unit-test",
+        "jwt"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:server/tests/test_auth_service.py:FakeAuthRepository",
+      "type": "class",
+      "name": "FakeAuthRepository",
+      "filePath": "server/tests/test_auth_service.py",
+      "lineRange": [
+        16,
+        37
+      ],
+      "summary": "인메모리 딕셔너리로 사용자 저장소를 흉내내는 테스트용 페이크 레포지토리이다.",
+      "tags": [
+        "test",
+        "fake",
+        "repository",
+        "test-double"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:server/repositories/__init__.py",
+      "type": "file",
+      "name": "__init__.py",
+      "filePath": "server/repositories/__init__.py",
+      "summary": "repositories 패키지의 진입점으로 RagRepository를 재노출하여 데이터 액세스 계층의 공개 표면을 정의한다.",
+      "tags": [
+        "entry-point",
+        "barrel",
+        "data-access"
+      ],
+      "complexity": "simple",
+      "languageNotes": "Python 패키지 barrel 파일로 하위 모듈의 RagRepository를 재노출한다."
+    },
+    {
+      "id": "file:server/repositories/rag_repository.py",
+      "type": "file",
+      "name": "rag_repository.py",
+      "filePath": "server/repositories/rag_repository.py",
+      "summary": "asyncpg 기반의 RAG 영속화 계층으로 transcripts/segments/chunks 테이블에 대한 CRUD와 chunks.embedding 코사인 유사도 + 키워드 기반 하이브리드 검색(RRF)을 수행한다.",
+      "tags": [
+        "repository",
+        "data-access",
+        "database",
+        "pgvector",
+        "hybrid-search",
+        "tested"
+      ],
+      "complexity": "complex",
+      "languageNotes": "pgvector 코사인 거리(<=>)와 키워드 매칭 결과를 Reciprocal Rank Fusion으로 병합하며, 벡터는 직접 vector 리터럴 문자열로 직렬화한다."
+    },
+    {
+      "id": "class:server/repositories/rag_repository.py:RagRepository",
+      "type": "class",
+      "name": "RagRepository",
+      "filePath": "server/repositories/rag_repository.py",
+      "lineRange": [
+        10,
+        559
+      ],
+      "summary": "transcript/segment/chunk 영속화와 하이브리드 검색·부모 청크 조회를 담당하는 단일 데이터 액세스 클래스. asyncpg 커넥션을 주입받아 모든 RAG 관련 DB 연산을 캡슐화한다.",
+      "tags": [
+        "repository",
+        "data-access",
+        "database",
+        "pgvector",
+        "hybrid-search"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:server/routes/rag.py",
+      "type": "file",
+      "name": "rag.py",
+      "filePath": "server/routes/rag.py",
+      "summary": "RAG 검색·응답 생성 파이프라인의 HTTP 진입점으로, POST /rag/query 단일 엔드포인트에서 retrieval(RagQueryService)과 generation(RagResponseService)을 순차 조율한다.",
+      "tags": [
+        "api-handler",
+        "router",
+        "dependency-injection",
+        "rag"
+      ],
+      "complexity": "moderate",
+      "languageNotes": "FastAPI APIRouter와 Depends 기반 DI로 요청 범위 서비스를 조립한다."
+    },
+    {
+      "id": "endpoint:server/routes/rag.py:POST-/rag/query",
+      "type": "endpoint",
+      "name": "POST /rag/query",
+      "filePath": "server/routes/rag.py",
+      "lineRange": [
+        51,
+        84
+      ],
+      "summary": "자연어 질의를 받아 하이브리드 검색으로 근거 청크를 찾고 LLM으로 답변을 생성해 답변과 근거 청크를 함께 반환하는 RAG 질의 엔드포인트.",
+      "tags": [
+        "endpoint",
+        "api-handler",
+        "rag",
+        "query"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:server/routes/rag.py:get_rag_query_service",
+      "type": "function",
+      "name": "get_rag_query_service",
+      "filePath": "server/routes/rag.py",
+      "lineRange": [
+        28,
+        41
+      ],
+      "summary": "요청 범위 DB 커넥션을 RagRepository에 주입하고 EmbeddingService·MorphemeService와 함께 RagQueryService를 조립해 yield하는 FastAPI 의존성 함수.",
+      "tags": [
+        "dependency-injection",
+        "factory",
+        "rag"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:server/services/embedding_service.py",
+      "type": "file",
+      "name": "embedding_service.py",
+      "filePath": "server/services/embedding_service.py",
+      "summary": "OpenAI 임베딩 API를 호출해 텍스트를 vector(1536) 임베딩으로 변환하는 서비스. 빈 입력 단락 처리와 API 오류 래핑을 담당한다.",
+      "tags": [
+        "service",
+        "embedding",
+        "openai",
+        "rag",
+        "tested"
+      ],
+      "complexity": "simple",
+      "languageNotes": "AsyncOpenAI 클라이언트를 사용하며 빈 입력 시 API 호출 없이 빈 리스트를 반환하는 최적화가 있다."
+    },
+    {
+      "id": "class:server/services/embedding_service.py:EmbeddingService",
+      "type": "class",
+      "name": "EmbeddingService",
+      "filePath": "server/services/embedding_service.py",
+      "lineRange": [
+        16,
+        62
+      ],
+      "summary": "설정에서 모델명을 읽어 AsyncOpenAI 클라이언트로 텍스트를 임베딩 벡터로 변환하는 서비스 클래스. API 오류를 EmbeddingServiceError로 래핑한다.",
+      "tags": [
+        "service",
+        "embedding",
+        "openai"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:server/services/morpheme_service.py",
+      "type": "file",
+      "name": "morpheme_service.py",
+      "filePath": "server/services/morpheme_service.py",
+      "summary": "kiwipiepy 기반 한국어 형태소 분석 서비스로, 하이브리드 검색의 키워드 매칭을 위해 질의·문서 텍스트에서 의미 있는 형태소를 추출한다.",
+      "tags": [
+        "service",
+        "morpheme",
+        "nlp",
+        "korean",
+        "hybrid-search"
+      ],
+      "complexity": "moderate",
+      "languageNotes": "kiwipiepy 라이브러리 부재 시 경고 로그를 남기고 graceful degradation하도록 import를 옵션 처리한다."
+    },
+    {
+      "id": "class:server/services/morpheme_service.py:MorphemeService",
+      "type": "class",
+      "name": "MorphemeService",
+      "filePath": "server/services/morpheme_service.py",
+      "lineRange": [
+        19,
+        68
+      ],
+      "summary": "Kiwi 형태소 분석기를 초기화하고 입력 텍스트를 분석해 특정 품사 태그의 형태소만 공백으로 연결한 토큰 문자열을 반환하는 클래스.",
+      "tags": [
+        "service",
+        "morpheme",
+        "nlp",
+        "korean"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:server/services/rag_query_service.py",
+      "type": "file",
+      "name": "rag_query_service.py",
+      "filePath": "server/services/rag_query_service.py",
+      "summary": "RAG retrieval 단계를 조율하는 서비스로, 질의 형태소 분석·임베딩 생성 후 RagRepository의 하이브리드 검색을 호출하고 부모 청크를 조회해 검색 순서대로 정렬한다.",
+      "tags": [
+        "service",
+        "orchestration",
+        "rag",
+        "retrieval"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:server/services/rag_query_service.py:RagQueryService",
+      "type": "class",
+      "name": "RagQueryService",
+      "filePath": "server/services/rag_query_service.py",
+      "lineRange": [
+        14,
+        116
+      ],
+      "summary": "MorphemeService·EmbeddingService·RagRepository를 주입받아 retrieval 파이프라인(형태소 분석 → 임베딩 → 하이브리드 검색 → 부모 청크 조회 → 정렬)을 조율하는 클래스.",
+      "tags": [
+        "service",
+        "orchestration",
+        "rag",
+        "retrieval"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:server/tests/test_embedding_service.py",
+      "type": "file",
+      "name": "test_embedding_service.py",
+      "filePath": "server/tests/test_embedding_service.py",
+      "summary": "EmbeddingService의 단일·배치 임베딩, OpenAI API 오류 처리, 모델 설정 사용, 빈 입력 최적화 동작을 검증하는 단위 테스트 모음.",
+      "tags": [
+        "test",
+        "embedding",
+        "service",
+        "mocking"
+      ],
+      "complexity": "moderate",
+      "languageNotes": "AsyncMock/MagicMock과 EmbeddingService.__new__로 실제 OpenAI 호출 없이 서비스 동작을 격리 검증한다."
+    },
+    {
+      "id": "file:server/db/__init__.py",
+      "type": "file",
+      "name": "__init__.py",
+      "filePath": "server/db/__init__.py",
+      "summary": "db 패키지의 진입점으로, connection 모듈의 데이터베이스 연결 심볼들을 재노출하는 배럴 파일이다.",
+      "tags": [
+        "entry-point",
+        "barrel",
+        "database",
+        "package-init"
+      ],
+      "complexity": "simple",
+      "languageNotes": "connection 모듈의 심볼을 re-export 하는 Python 패키지 배럴(__init__.py)."
+    },
+    {
+      "id": "file:server/services/rag_response_service.py",
+      "type": "file",
+      "name": "rag_response_service.py",
+      "filePath": "server/services/rag_response_service.py",
+      "summary": "검색된 chunk들을 컨텍스트로 구성하여 OpenAI Chat API로 RAG 답변을 생성하는 서비스이다.",
+      "tags": [
+        "service",
+        "rag",
+        "llm",
+        "api-handler"
+      ],
+      "complexity": "moderate",
+      "languageNotes": "AsyncOpenAI 클라이언트를 사용하는 비동기 서비스로, settings를 통해 API 키를 주입받는다."
+    },
+    {
+      "id": "class:server/services/rag_response_service.py:RagResponseService",
+      "type": "class",
+      "name": "RagResponseService",
+      "filePath": "server/services/rag_response_service.py",
+      "lineRange": [
+        25,
+        131
+      ],
+      "summary": "검색 결과 chunk를 프롬프트 컨텍스트로 빌드하고 GPT 모델을 호출해 사용자 질의에 대한 RAG 답변을 반환하는 핵심 서비스 클래스이다.",
+      "tags": [
+        "service",
+        "rag",
+        "llm",
+        "answer-generation"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:server/services/summary_service.py",
+      "type": "file",
+      "name": "summary_service.py",
+      "filePath": "server/services/summary_service.py",
+      "summary": "전사 텍스트를 GPT로 요약하는 서비스로, 긴 텍스트는 청크로 분할하여 세마포어로 동시성을 제한하며 처리한 뒤 최종 요약을 생성한다.",
+      "tags": [
+        "service",
+        "summarization",
+        "llm",
+        "concurrency",
+        "tested"
+      ],
+      "complexity": "moderate",
+      "languageNotes": "asyncio.Semaphore와 gather를 활용해 청크별 요약 호출의 동시성을 제어한다."
+    },
+    {
+      "id": "class:server/services/summary_service.py:SummaryService",
+      "type": "class",
+      "name": "SummaryService",
+      "filePath": "server/services/summary_service.py",
+      "lineRange": [
+        16,
+        170
+      ],
+      "summary": "전사 텍스트 길이에 따라 단일 요약 또는 청크 분할 후 병합 요약을 수행하고, 텍스트 경계 기준 분할 로직을 포함하는 요약 서비스 클래스이다.",
+      "tags": [
+        "service",
+        "summarization",
+        "llm",
+        "text-splitting"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:server/settings.py",
+      "type": "file",
+      "name": "settings.py",
+      "filePath": "server/settings.py",
+      "summary": "pydantic-settings 기반의 중앙 설정 모델로, DB 연결, OpenAI 모델, 오디오 청킹, 동시성, JWT 등 .env에서 로드되는 모든 구성값을 정의한다.",
+      "tags": [
+        "config",
+        "settings",
+        "configuration",
+        "singleton"
+      ],
+      "complexity": "moderate",
+      "languageNotes": "get_settings는 lru_cache 패턴으로 Settings 싱글톤을 제공하는 의존성 함수이다."
+    },
+    {
+      "id": "class:server/settings.py:Settings",
+      "type": "class",
+      "name": "Settings",
+      "filePath": "server/settings.py",
+      "lineRange": [
+        7,
+        54
+      ],
+      "summary": ".env 환경 변수에서 데이터베이스, OpenAI, 오디오 청킹, 요약 동시성, JWT 설정을 로드하는 pydantic BaseSettings 모델이다.",
+      "tags": [
+        "config",
+        "settings",
+        "data-model",
+        "validation"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:server/settings.py:get_settings",
+      "type": "function",
+      "name": "get_settings",
+      "filePath": "server/settings.py",
+      "lineRange": [
+        57,
+        59
+      ],
+      "summary": "Settings 인스턴스를 생성/반환하는 의존성 주입용 팩토리 함수이다.",
+      "tags": [
+        "config",
+        "factory",
+        "dependency-injection"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:server/tests/test_rag_persistence.py",
+      "type": "file",
+      "name": "test_rag_persistence.py",
+      "filePath": "server/tests/test_rag_persistence.py",
+      "summary": "RagRepository의 transcript/segment/chunk 영속화, 하이브리드 검색, 부모 chunk 조회 로직을 Fake 커넥션으로 검증하는 종합 테스트 스위트이다.",
+      "tags": [
+        "test",
+        "rag",
+        "database",
+        "persistence"
+      ],
+      "complexity": "complex",
+      "languageNotes": "FakeConnection/FakePool 등 비동기 컨텍스트 매니저를 모킹하여 asyncpg 의존 없이 SQL 생성과 영속화를 검증한다."
+    },
+    {
+      "id": "class:server/tests/test_rag_persistence.py:FakeConnection",
+      "type": "class",
+      "name": "FakeConnection",
+      "filePath": "server/tests/test_rag_persistence.py",
+      "lineRange": [
+        19,
+        42
+      ],
+      "summary": "asyncpg 커넥션을 대체하는 테스트 더블로, fetchrow/execute/executemany/fetch 호출과 인자를 기록하여 검증에 활용한다.",
+      "tags": [
+        "test",
+        "mock",
+        "database",
+        "test-double"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:server/tests/test_summary_service.py",
+      "type": "file",
+      "name": "test_summary_service.py",
+      "filePath": "server/tests/test_summary_service.py",
+      "summary": "SummaryService의 단일 요약, 긴 전사 청크 분할 후 최종 요약, 텍스트 경계 분할 로직을 Fake OpenAI 클라이언트로 검증하는 테스트이다.",
+      "tags": [
+        "test",
+        "summarization",
+        "llm",
+        "mock"
+      ],
+      "complexity": "moderate",
+      "languageNotes": "SummaryService.__new__로 __init__을 우회하고 FakeClient를 주입해 OpenAI 호출 없이 동작을 검증한다."
+    },
+    {
+      "id": "file:server/services/audio_analysis_service.py",
+      "type": "file",
+      "name": "audio_analysis_service.py",
+      "filePath": "server/services/audio_analysis_service.py",
+      "summary": "FFmpeg를 subprocess로 실행해 오디오 파일의 재생 시간(duration)을 추출하고, 빈 파일이나 디코딩 불가 파일을 거부하는 서비스입니다. 인제스천 파이프라인의 오디오 분석 단계를 담당합니다.",
+      "tags": [
+        "service",
+        "ffmpeg",
+        "audio-analysis",
+        "validation",
+        "tested"
+      ],
+      "complexity": "simple",
+      "languageNotes": "FFmpeg stderr 출력을 정규식으로 파싱해 duration을 초 단위로 변환합니다."
+    },
+    {
+      "id": "class:server/services/audio_analysis_service.py:AudioAnalysisService",
+      "type": "class",
+      "name": "AudioAnalysisService",
+      "filePath": "server/services/audio_analysis_service.py",
+      "lineRange": [
+        16,
+        53
+      ],
+      "summary": "FFmpeg 실행 파일 경로를 보유하고, analyze()로 오디오 duration을 측정하며 _parse_duration_seconds()로 FFmpeg 출력에서 시간 값을 파싱합니다.",
+      "tags": [
+        "service",
+        "ffmpeg",
+        "audio-analysis"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:server/services/audio_chunking.py",
+      "type": "file",
+      "name": "audio_chunking.py",
+      "filePath": "server/services/audio_chunking.py",
+      "summary": "오디오 duration과 concurrency 기반으로 chunk 크기를 계산하고 overlap을 포함한 chunk plan을 만든 뒤, FFmpeg로 mono 16kHz MP3 chunk 파일들을 생성하는 서비스입니다. 크기 제한을 맞추기 위해 비트레이트 후보를 조정합니다.",
+      "tags": [
+        "service",
+        "ffmpeg",
+        "audio-chunking",
+        "audio-analysis",
+        "tested"
+      ],
+      "complexity": "moderate",
+      "languageNotes": "chunk 경계에서 콘텐츠 손실을 막기 위해 leading_overlap_seconds로 chunk 간 겹침을 둡니다."
+    },
+    {
+      "id": "function:server/services/audio_chunking.py:calculate_chunk_seconds",
+      "type": "function",
+      "name": "calculate_chunk_seconds",
+      "filePath": "server/services/audio_chunking.py",
+      "lineRange": [
+        31,
+        45
+      ],
+      "summary": "전체 duration과 concurrency를 받아 min/max 범위로 clamp된 chunk 길이(초)를 계산합니다. 잘못된 설정에 대해 ValueError를 발생시킵니다.",
+      "tags": [
+        "utility",
+        "audio-chunking",
+        "validation"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/services/audio_chunking.py:build_chunk_plan",
+      "type": "function",
+      "name": "build_chunk_plan",
+      "filePath": "server/services/audio_chunking.py",
+      "lineRange": [
+        48,
+        82
+      ],
+      "summary": "chunk 길이와 overlap 초를 받아 duration을 넘지 않으면서 leading overlap을 포함하는 ChunkPlan 목록을 생성합니다.",
+      "tags": [
+        "utility",
+        "audio-chunking",
+        "planning"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:server/services/audio_chunking.py:AudioChunkingService",
+      "type": "class",
+      "name": "AudioChunkingService",
+      "filePath": "server/services/audio_chunking.py",
+      "lineRange": [
+        85,
+        180
+      ],
+      "summary": "ChunkPlan을 입력받아 FFmpeg로 각 구간을 mono 16kHz MP3로 분할하고, 크기 제한 내에 맞도록 비트레이트 후보를 조정하며 AudioChunk 목록을 반환합니다.",
+      "tags": [
+        "service",
+        "ffmpeg",
+        "audio-chunking"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:server/services/transcription_service.py",
+      "type": "file",
+      "name": "transcription_service.py",
+      "filePath": "server/services/transcription_service.py",
+      "summary": "업로드된 오디오를 분석·chunk 분할한 뒤 OpenAI Whisper로 chunk별 STT를 semaphore로 동시성 제한하며 수행하고, 재시도·overlap 해소를 거쳐 세그먼트를 병합하는 전사 오케스트레이션 서비스입니다.",
+      "tags": [
+        "service",
+        "whisper",
+        "stt",
+        "concurrency",
+        "tested"
+      ],
+      "complexity": "complex",
+      "languageNotes": "asyncio.Semaphore로 Whisper 호출을 게이트하고, verbose_json 세그먼트 타이밍으로 chunk 간 leading overlap을 제거합니다."
+    },
+    {
+      "id": "class:server/services/transcription_service.py:TranscriptionService",
+      "type": "class",
+      "name": "TranscriptionService",
+      "filePath": "server/services/transcription_service.py",
+      "lineRange": [
+        45,
+        303
+      ],
+      "summary": "AudioAnalysisService와 AudioChunkingService를 조합해 오디오를 chunk로 나누고 Whisper로 동시 전사하며, 재시도·세그먼트 병합·overlap 해소를 수행하는 핵심 전사 서비스 클래스입니다.",
+      "tags": [
+        "service",
+        "whisper",
+        "stt",
+        "concurrency",
+        "orchestration"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:server/tests/test_audio_analysis_service.py",
+      "type": "file",
+      "name": "test_audio_analysis_service.py",
+      "filePath": "server/tests/test_audio_analysis_service.py",
+      "summary": "AudioAnalysisService의 duration 파싱, 빈 파일·디코딩 불가 파일 거부, 정상 duration 반환을 monkeypatch로 FFmpeg를 가짜화하여 검증하는 테스트입니다.",
+      "tags": [
+        "test",
+        "audio-analysis",
+        "validation"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:server/tests/test_audio_chunking.py",
+      "type": "file",
+      "name": "test_audio_chunking.py",
+      "filePath": "server/tests/test_audio_chunking.py",
+      "summary": "calculate_chunk_seconds의 clamp/검증 동작, build_chunk_plan의 overlap 처리, AudioChunkingService의 mono 16kHz MP3 생성 및 크기 제한 실패를 검증하는 테스트입니다.",
+      "tags": [
+        "test",
+        "audio-chunking",
+        "ffmpeg"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:server/tests/test_transcription_service.py",
+      "type": "file",
+      "name": "test_transcription_service.py",
+      "filePath": "server/tests/test_transcription_service.py",
+      "summary": "TranscriptionService의 동시성 제한·chunk 순서 유지, 재시도 후 성공, 실패 시 502 처리, verbose_json 세그먼트로 leading overlap 제거를 가짜 OpenAI 클라이언트로 검증하는 테스트입니다.",
+      "tags": [
+        "test",
+        "whisper",
+        "stt",
+        "concurrency"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "table:server/db/migrations/001_create_rag_persistence.sql",
+      "type": "table",
+      "name": "001_create_rag_persistence.sql",
+      "filePath": "server/db/migrations/001_create_rag_persistence.sql",
+      "summary": "RAG 인제스천 파이프라인의 핵심 영속성 스키마를 생성하는 최초 migration으로, transcripts / segments / chunks 세 테이블과 pgvector 기반 embedding 컬럼 및 ivfflat 인덱스를 정의한다.",
+      "tags": [
+        "database",
+        "migration",
+        "pgvector",
+        "schema-definition"
+      ],
+      "complexity": "moderate",
+      "languageNotes": "chunks.embedding은 vector(1536) 타입이며 ivfflat cosine 인덱스(idx_chunks_embedding)로 유사도 검색을 지원한다. keywords[] 배열에는 GIN 인덱스, text에는 to_tsvector 기반 FTS 인덱스가 적용된다."
+    },
+    {
+      "id": "table:server/db/migrations/001_create_rag_persistence.sql:transcripts",
+      "type": "table",
+      "name": "transcripts",
+      "filePath": "server/db/migrations/001_create_rag_persistence.sql",
+      "lineRange": [
+        3,
+        20
+      ],
+      "summary": "오디오 업로드 1건당 최상위 레코드를 저장하는 테이블로, UUID PK와 status, full_text, summary, 메타데이터(duration, language, stt_model 등)를 보관한다.",
+      "tags": [
+        "database",
+        "data-model",
+        "transcript",
+        "audit"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "table:server/db/migrations/001_create_rag_persistence.sql:segments",
+      "type": "table",
+      "name": "segments",
+      "filePath": "server/db/migrations/001_create_rag_persistence.sql",
+      "lineRange": [
+        22,
+        34
+      ],
+      "summary": "STT 최소 단위를 저장하는 테이블로, transcript_id FK와 함께 start_seconds / end_seconds / speaker_label 등 타이밍·화자 정보를 갖는다.",
+      "tags": [
+        "database",
+        "data-model",
+        "stt",
+        "timing"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "table:server/db/migrations/001_create_rag_persistence.sql:chunks",
+      "type": "table",
+      "name": "chunks",
+      "filePath": "server/db/migrations/001_create_rag_persistence.sql",
+      "lineRange": [
+        36,
+        57
+      ],
+      "summary": "검색 최적화 단위를 저장하는 테이블로, embedding vector(1536), keywords[], topic, subtopic을 가지며 ivfflat cosine 인덱스를 통해 벡터 유사도 검색을 지원한다.",
+      "tags": [
+        "database",
+        "data-model",
+        "pgvector",
+        "retrieval"
+      ],
+      "complexity": "moderate",
+      "languageNotes": "embedding 컬럼은 vector(1536)이며 idx_chunks_embedding이 vector_cosine_ops 기반 ivfflat 인덱스를 제공한다."
+    },
+    {
+      "id": "table:server/db/migrations/002_add_search_chunks.sql",
+      "type": "table",
+      "name": "002_add_search_chunks.sql",
+      "filePath": "server/db/migrations/002_add_search_chunks.sql",
+      "summary": "하이브리드 검색을 위한 search_chunks 테이블을 추가하는 migration으로, parent_chunk_id로 chunks를 참조하는 child 단위와 pgvector embedding 및 ivfflat 인덱스를 정의한다.",
+      "tags": [
+        "database",
+        "migration",
+        "pgvector",
+        "hybrid-search"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "table:server/db/migrations/002_add_search_chunks.sql:search_chunks",
+      "type": "table",
+      "name": "search_chunks",
+      "filePath": "server/db/migrations/002_add_search_chunks.sql",
+      "lineRange": [
+        5,
+        20
+      ],
+      "summary": "하이브리드 검색용 child 청크를 저장하는 테이블로, parent_chunk_id로 부모 chunks를 참조하며 embedding과 segment 범위 정보를 보관한다.",
+      "tags": [
+        "database",
+        "data-model",
+        "pgvector",
+        "hybrid-search"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "table:server/db/migrations/003_add_users.sql",
+      "type": "table",
+      "name": "003_add_users.sql",
+      "filePath": "server/db/migrations/003_add_users.sql",
+      "summary": "인증 기능을 위한 users 테이블을 추가하는 migration으로, nickname / email / password_hash와 email unique 인덱스를 정의한다.",
+      "tags": [
+        "database",
+        "migration",
+        "auth",
+        "security"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "table:server/db/migrations/003_add_users.sql:users",
+      "type": "table",
+      "name": "users",
+      "filePath": "server/db/migrations/003_add_users.sql",
+      "lineRange": [
+        3,
+        10
+      ],
+      "summary": "사용자 인증 정보를 저장하는 테이블로, email, password_hash, nickname 및 생성·수정 타임스탬프를 가지며 email에 unique 인덱스가 적용된다.",
+      "tags": [
+        "database",
+        "data-model",
+        "auth",
+        "security"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "table:server/db/migrations/004_add_search_chunks_morphemes.sql",
+      "type": "table",
+      "name": "004_add_search_chunks_morphemes.sql",
+      "filePath": "server/db/migrations/004_add_search_chunks_morphemes.sql",
+      "summary": "search_chunks 테이블에 형태소 분석 결과용 text_morphemes 컬럼을 추가하고, coalesce(text_morphemes, text) 기반 simple dictionary GIN FTS 인덱스를 생성하는 migration이다.",
+      "tags": [
+        "database",
+        "migration",
+        "full-text-search",
+        "morpheme"
+      ],
+      "complexity": "simple",
+      "languageNotes": "GIN 인덱스는 to_tsvector('simple', coalesce(text_morphemes, text))를 사용해 형태소가 NULL인 기존 rows도 원문 기반으로 FTS에 포함되도록 fallback을 둔다."
+    },
+    {
+      "id": "document:CLAUDE.md",
+      "type": "document",
+      "name": "CLAUDE.md",
+      "filePath": "CLAUDE.md",
+      "summary": "Claude Code를 위한 아키텍처 및 개발 가이드로, 명령어, 환경 설정, 레이어 구조, `POST /audio/transcripts` 인제스천 파이프라인 흐름과 DB 스키마, 핵심 설계 결정을 설명한다.",
+      "tags": [
+        "documentation",
+        "architecture",
+        "developer-guide",
+        "pipeline"
+      ],
+      "complexity": "moderate",
+      "languageNotes": "9개 섹션으로 구성된 프로젝트 온보딩/아키텍처 문서."
+    },
+    {
+      "id": "document:Directory.md",
+      "type": "document",
+      "name": "Directory.md",
+      "filePath": "Directory.md",
+      "summary": "AI 기술 활용 상세 문서로 Whisper STT 파이프라인, LangChain 요약 체인, 문서 임베딩 + RAG 검색, pgvector 검색 함수(Supabase SQL)를 설명한다.",
+      "tags": [
+        "documentation",
+        "rag",
+        "ai-pipeline",
+        "pgvector"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:PLAN.md",
+      "type": "document",
+      "name": "PLAN.md",
+      "filePath": "PLAN.md",
+      "summary": "개발 작업 시 따라야 할 플랜 작성 규칙을 기술한 짧은 가이드 문서.",
+      "tags": [
+        "documentation",
+        "development",
+        "guidelines"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:README.md",
+      "type": "document",
+      "name": "README.md",
+      "filePath": "README.md",
+      "summary": "프로젝트의 코딩 컨벤션을 한국어로 정리한 문서로 작업 중 규칙, 함수 생성 규칙, Plan 규칙, 공통 규칙을 다룬다.",
+      "tags": [
+        "documentation",
+        "entry-point",
+        "coding-conventions"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:VOICEDOC_PROJECT.md",
+      "type": "document",
+      "name": "VOICEDOC_PROJECT.md",
+      "filePath": "VOICEDOC_PROJECT.md",
+      "summary": "VoiceDoc 음성 문서화 서비스의 설계서로 프로젝트 개요, 기능 명세, 기술 스택, Supabase PostgreSQL DB 스키마, FastAPI API 엔드포인트, 환경 변수, 초기 세팅 커맨드를 포괄적으로 정의한다.",
+      "tags": [
+        "documentation",
+        "specification",
+        "architecture",
+        "api-schema"
+      ],
+      "complexity": "complex",
+      "languageNotes": "18개 섹션의 프로젝트 설계 명세서로 DB 스키마와 API 엔드포인트 정의를 포함."
+    },
+    {
+      "id": "service:docker-compose.yml",
+      "type": "service",
+      "name": "docker-compose.yml",
+      "filePath": "docker-compose.yml",
+      "summary": "PostgreSQL 16 + pgvector(`db`)와 FastAPI 백엔드(`app`) 컨테이너를 정의하는 Docker Compose 오케스트레이션 파일로, 5432/8000 포트를 노출하고 영속 볼륨을 구성한다.",
+      "tags": [
+        "orchestration",
+        "infrastructure",
+        "containerization",
+        "database"
+      ],
+      "complexity": "simple",
+      "languageNotes": "pgvector/pgvector:pg16 이미지를 사용해 벡터 유사도 검색용 PostgreSQL을 프로비저닝."
+    },
+    {
+      "id": "service:docker-compose.yml:db",
+      "type": "service",
+      "name": "db",
+      "summary": "pgvector/pgvector:pg16 이미지를 사용하는 PostgreSQL 16 + pgvector 서비스로, recordoc 데이터베이스를 5432 포트에 노출하고 pgdata 볼륨에 데이터를 영속화한다.",
+      "tags": [
+        "database",
+        "pgvector",
+        "postgresql",
+        "infrastructure"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "service:docker-compose.yml:app",
+      "type": "service",
+      "name": "app",
+      "summary": "로컬 Dockerfile에서 빌드되는 FastAPI 백엔드 서비스로, db 서비스에 의존하며 DATABASE_URL 환경 변수로 PostgreSQL에 연결하고 8000 포트를 노출한다.",
+      "tags": [
+        "backend",
+        "fastapi",
+        "containerization",
+        "infrastructure"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "config:server/.env.example",
+      "type": "config",
+      "name": ".env.example",
+      "filePath": "server/.env.example",
+      "summary": "settings.py가 소비하는 환경 변수 템플릿으로, OpenAI API 키 및 모델, CORS 허용 도메인, 오디오 전사/청킹 동시성·크기 설정, JWT 인증 비밀키와 토큰 만료 정책을 정의한다.",
+      "tags": [
+        "configuration",
+        "environment",
+        "security",
+        "jwt",
+        "openai"
+      ],
+      "complexity": "simple",
+      "languageNotes": "dotenv 형식의 키-값 변수 15개를 정의하며 pydantic-settings를 통해 런타임 설정으로 로드된다."
+    },
+    {
+      "id": "document:server/README.md",
+      "type": "document",
+      "name": "README.md",
+      "filePath": "server/README.md",
+      "summary": "Recordoc 백엔드 서버 문서로, 설치(Setup)·실행(Run)·테스트(Test) 절차와 GET /health, POST /audio/summarize API 사용법을 설명한다.",
+      "tags": [
+        "documentation",
+        "entry-point",
+        "overview",
+        "api"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "config:server/pyproject.toml",
+      "type": "config",
+      "name": "pyproject.toml",
+      "filePath": "server/pyproject.toml",
+      "summary": "Python 패키지 매니페스트로, fastapi·openai·asyncpg·pydantic-settings·kiwipiepy·PyJWT·bcrypt 런타임 의존성과 pytest 개발 의존성, pytest 설정을 정의한다.",
+      "tags": [
+        "configuration",
+        "build-system",
+        "dependencies",
+        "python"
+      ],
+      "complexity": "simple",
+      "languageNotes": "uv 기반 dependency-groups와 tool.pytest.ini_options 섹션을 사용하는 PEP 621 매니페스트이다."
+    },
+    {
+      "id": "document:server/plan/chunk.md",
+      "type": "document",
+      "name": "chunk.md",
+      "filePath": "server/plan/chunk.md",
+      "summary": "LLM 기반 맥락 단위 chunking 수정 계획 문서로, chunk 목적 재정의부터 LLM chunk plan 서비스 추가, 도메인별 prompt 설계, builder 구조 변경, metadata precompute 역할 분리, 테스트 계획까지 다룬다.",
+      "tags": [
+        "documentation",
+        "design-plan",
+        "chunking",
+        "rag",
+        "llm"
+      ],
+      "complexity": "moderate",
+      "languageNotes": "한국어 설계 문서로, ContextChunkPlanningService 및 chunk builder 구현을 안내한다."
+    },
+    {
+      "id": "document:server/plan/db,rag.md",
+      "type": "document",
+      "name": "db,rag.md",
+      "filePath": "server/plan/db,rag.md",
+      "summary": "오디오 STT/RAG MVP 아키텍처 플랜 문서로, 전체 흐름, 회의록/강의 chunk 생성 전략, retrieval pipeline, metadata 설계, DB persistence 및 pgvector semantic search까지의 구현 우선순위를 단계별로 정의한다.",
+      "tags": [
+        "documentation",
+        "design-plan",
+        "architecture",
+        "rag",
+        "database"
+      ],
+      "complexity": "complex",
+      "languageNotes": "한국어 MVP 아키텍처 문서로, RagRepository 및 ingestion 파이프라인의 청사진 역할을 한다."
+    },
+    {
+      "id": "document:server/plan/embedding.md",
+      "type": "document",
+      "name": "embedding.md",
+      "filePath": "server/plan/embedding.md",
+      "summary": "Hierarchical Vector Indexing 저장 파이프라인 계획 문서로, DB schema 추가, adaptive search chunk builder, embedding service, repository 저장 로직, ingestion 동기 후처리 연결을 단계별로 설계한다.",
+      "tags": [
+        "documentation",
+        "design-plan",
+        "embedding",
+        "vector-search",
+        "pgvector"
+      ],
+      "complexity": "complex",
+      "languageNotes": "한국어 설계 문서로, embedding service와 vector(1536) 저장 파이프라인 구현을 안내한다."
+    },
+    {
+      "id": "document:server/plan/jwt.md",
+      "type": "document",
+      "name": "jwt.md",
+      "filePath": "server/plan/jwt.md",
+      "summary": "JWT 인증 모듈 구현 플랜 문서로, 회원가입/로그인/인증 요청 흐름과 users 테이블 마이그레이션, Auth 스키마, AuthRepository, AuthService, get_current_user 의존성, 라우터 등록까지 단계별로 정의한다.",
+      "tags": [
+        "documentation",
+        "design-plan",
+        "authentication",
+        "jwt",
+        "security"
+      ],
+      "complexity": "complex",
+      "languageNotes": "한국어 설계 문서로, JWT 기반 인증 계층과 신규/수정 파일 목록을 명세한다."
+    },
+    {
+      "id": "document:server/plan/long audio.md",
+      "type": "document",
+      "name": "long audio.md",
+      "filePath": "server/plan/long audio.md",
+      "summary": "긴 오디오 청킹과 병렬 STT 처리 계획 문서로, 오디오 분석 계층 추가, duration 기반 청크 계획, 제한 병렬 STT 처리, transcript 병합 및 중복 최소화, 긴 transcript 요약 최적화를 단계별로 다룬다.",
+      "tags": [
+        "documentation",
+        "design-plan",
+        "audio-processing",
+        "stt",
+        "concurrency"
+      ],
+      "complexity": "moderate",
+      "languageNotes": "한국어 설계 문서로, AudioAnalysisService 및 semaphore 기반 병렬 STT 구현을 안내한다."
+    },
+    {
+      "id": "document:server/plan/rag.md",
+      "type": "document",
+      "name": "rag.md",
+      "filePath": "server/plan/rag.md",
+      "summary": "RAG 검색 파이프라인 구현 플랜 문서로, 검색 스키마, MorphemeService, FTS 인덱스 마이그레이션, 형태소 추출 연결, 검색 repository 메서드, RAG 쿼리/응답 생성 서비스, API 엔드포인트 등록까지 단계별로 설계한다.",
+      "tags": [
+        "documentation",
+        "design-plan",
+        "rag",
+        "hybrid-search",
+        "api"
+      ],
+      "complexity": "complex",
+      "languageNotes": "한국어 설계 문서로, hybrid search(FTS + semantic)와 RAG 쿼리/응답 서비스 구현을 안내한다."
+    },
+    {
+      "id": "document:.claude/commands/REVIEW.md",
+      "type": "document",
+      "name": "REVIEW.md",
+      "filePath": ".claude/commands/REVIEW.md",
+      "summary": "Claude Code 커스텀 커맨드 문서로, 코드 리뷰 시 적용할 리뷰 규칙을 정의한다.",
+      "tags": [
+        "documentation",
+        "claude-command",
+        "code-review",
+        "tooling"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:.claude/skills/run-recordoc-be/SKILL.md",
+      "type": "document",
+      "name": "SKILL.md",
+      "filePath": ".claude/skills/run-recordoc-be/SKILL.md",
+      "summary": "FastAPI 백엔드 서버를 기동하고 스모크 테스트를 실행하는 Claude Code 스킬 문서로, 사전 준비물·실행 경로·검증 항목·주의사항을 안내한다.",
+      "tags": [
+        "documentation",
+        "claude-skill",
+        "smoke-test",
+        "tooling",
+        "runbook"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:.claude/skills/run-recordoc-be/smoke.py",
+      "type": "file",
+      "name": "smoke.py",
+      "filePath": ".claude/skills/run-recordoc-be/smoke.py",
+      "summary": "uvicorn 서버를 서브프로세스로 기동한 뒤 헬스체크 및 주요 엔드포인트에 HTTP 요청을 보내 응답을 검증하는 스모크 테스트 스크립트다.",
+      "tags": [
+        "smoke-test",
+        "tooling",
+        "script",
+        "health-check",
+        "validation"
+      ],
+      "complexity": "moderate",
+      "languageNotes": "httpx로 HTTP 요청을 보내고 subprocess.Popen으로 서버 프로세스를 직접 제어하는 독립 실행형 스크립트."
+    },
+    {
+      "id": "function:.claude/skills/run-recordoc-be/smoke.py:wait_for_server",
+      "type": "function",
+      "name": "wait_for_server",
+      "filePath": ".claude/skills/run-recordoc-be/smoke.py",
+      "lineRange": [
+        24,
+        32
+      ],
+      "summary": "지정한 timeout 동안 서버 헬스 엔드포인트를 폴링하여 서버 기동을 대기하고, 실패 시 RuntimeError를 발생시킨다.",
+      "tags": [
+        "utility",
+        "health-check",
+        "polling",
+        "smoke-test"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:.claude/skills/run-recordoc-be/smoke.py:main",
+      "type": "function",
+      "name": "main",
+      "filePath": ".claude/skills/run-recordoc-be/smoke.py",
+      "lineRange": [
+        42,
+        88
+      ],
+      "summary": "서버를 기동하고 헬스체크·요약·전사 엔드포인트에 순차적으로 요청을 보내 검증한 뒤 서버 프로세스를 정리하는 스모크 테스트 진입점이다.",
+      "tags": [
+        "entry-point",
+        "smoke-test",
+        "validation",
+        "orchestration"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:.understand-anything/.understandignore",
+      "type": "file",
+      "name": ".understandignore",
+      "filePath": ".understand-anything/.understandignore",
+      "summary": "코드 분석 도구(understand-anything)가 분석에서 제외할 파일·디렉터리 패턴을 정의하는 ignore 설정 파일이다.",
+      "tags": [
+        "configuration",
+        "tooling",
+        "ignore-file"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "config:.understand-anything/config.json",
+      "type": "config",
+      "name": "config.json",
+      "filePath": ".understand-anything/config.json",
+      "summary": "코드 분석 도구(understand-anything)의 출력 언어 등을 지정하는 설정 파일이다.",
+      "tags": [
+        "configuration",
+        "tooling",
+        "json"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:server/dependencies/__init__.py",
+      "type": "file",
+      "name": "__init__.py",
+      "filePath": "server/dependencies/__init__.py",
+      "summary": "server.dependencies 패키지를 표시하는 빈 패키지 마커 파일이다.",
+      "tags": [
+        "package-marker",
+        "barrel",
+        "python"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:server/services/__init__.py",
+      "type": "file",
+      "name": "__init__.py",
+      "filePath": "server/services/__init__.py",
+      "summary": "server.services 패키지를 표시하는 빈 패키지 마커 파일이다.",
+      "tags": [
+        "package-marker",
+        "barrel",
+        "python"
+      ],
+      "complexity": "simple"
+    }
+  ],
+  "edges": [
+    {
+      "source": "file:server/schemas/__init__.py",
+      "target": "file:server/schemas/rag.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/schemas/rag.py",
+      "target": "class:server/schemas/rag.py:SegmentCreate",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/schemas/rag.py",
+      "target": "class:server/schemas/rag.py:ChunkCreate",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/schemas/rag.py",
+      "target": "class:server/schemas/rag.py:SearchChunkCreate",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/schemas/rag.py",
+      "target": "class:server/schemas/rag.py:SegmentCreate",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/schemas/rag.py",
+      "target": "class:server/schemas/rag.py:ChunkCreate",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/schemas/rag.py",
+      "target": "class:server/schemas/rag.py:SearchChunkCreate",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/services/chunk_builder.py",
+      "target": "file:server/schemas/rag.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/services/chunk_builder.py",
+      "target": "file:server/services/context_chunk_planning_service.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/services/chunk_builder.py",
+      "target": "class:server/services/chunk_builder.py:MeetingChunkBuilder",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/services/chunk_builder.py",
+      "target": "class:server/services/chunk_builder.py:LectureChunkBuilder",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/services/chunk_builder.py",
+      "target": "class:server/services/chunk_builder.py:ContextPlannedChunkBuilder",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/services/chunk_builder.py",
+      "target": "class:server/services/chunk_builder.py:DeterministicFallbackChunkBuilder",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/services/chunk_builder.py",
+      "target": "function:server/services/chunk_builder.py:get_chunk_builder",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/services/chunk_builder.py",
+      "target": "class:server/services/chunk_builder.py:MeetingChunkBuilder",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/services/chunk_builder.py",
+      "target": "class:server/services/chunk_builder.py:LectureChunkBuilder",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/services/chunk_builder.py",
+      "target": "class:server/services/chunk_builder.py:ContextPlannedChunkBuilder",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/services/chunk_builder.py",
+      "target": "class:server/services/chunk_builder.py:DeterministicFallbackChunkBuilder",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/services/chunk_builder.py",
+      "target": "function:server/services/chunk_builder.py:get_chunk_builder",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "class:server/services/chunk_builder.py:MeetingChunkBuilder",
+      "target": "class:server/schemas/rag.py:ChunkCreate",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "class:server/services/chunk_builder.py:LectureChunkBuilder",
+      "target": "class:server/schemas/rag.py:ChunkCreate",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/services/chunk_metadata_service.py",
+      "target": "file:server/schemas/rag.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/services/chunk_metadata_service.py",
+      "target": "file:server/settings.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/services/chunk_metadata_service.py",
+      "target": "class:server/services/chunk_metadata_service.py:ChunkMetadataService",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/services/chunk_metadata_service.py",
+      "target": "class:server/services/chunk_metadata_service.py:ChunkMetadataService",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "class:server/services/chunk_metadata_service.py:ChunkMetadataService",
+      "target": "class:server/schemas/rag.py:ChunkCreate",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/services/context_chunk_planning_service.py",
+      "target": "file:server/schemas/rag.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/services/context_chunk_planning_service.py",
+      "target": "file:server/settings.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/services/context_chunk_planning_service.py",
+      "target": "class:server/services/context_chunk_planning_service.py:ContextChunkPlanningService",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/services/context_chunk_planning_service.py",
+      "target": "class:server/services/context_chunk_planning_service.py:ContextChunkPlanningService",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/services/search_chunk_builder.py",
+      "target": "file:server/schemas/rag.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/services/search_chunk_builder.py",
+      "target": "class:server/services/search_chunk_builder.py:SearchChunkBuilder",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/services/search_chunk_builder.py",
+      "target": "class:server/services/search_chunk_builder.py:SearchChunkBuilder",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "class:server/services/search_chunk_builder.py:SearchChunkBuilder",
+      "target": "class:server/schemas/rag.py:SearchChunkCreate",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/services/transcript_ingestion_service.py",
+      "target": "file:server/repositories/rag_repository.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/services/transcript_ingestion_service.py",
+      "target": "file:server/schemas/rag.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/services/transcript_ingestion_service.py",
+      "target": "file:server/services/chunk_builder.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/services/transcript_ingestion_service.py",
+      "target": "file:server/services/chunk_metadata_service.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/services/transcript_ingestion_service.py",
+      "target": "file:server/services/context_chunk_planning_service.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/services/transcript_ingestion_service.py",
+      "target": "file:server/services/embedding_service.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/services/transcript_ingestion_service.py",
+      "target": "file:server/services/morpheme_service.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/services/transcript_ingestion_service.py",
+      "target": "file:server/services/search_chunk_builder.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/services/transcript_ingestion_service.py",
+      "target": "file:server/services/transcription_service.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/services/transcript_ingestion_service.py",
+      "target": "class:server/services/transcript_ingestion_service.py:TranscriptIngestionService",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/services/transcript_ingestion_service.py",
+      "target": "class:server/services/transcript_ingestion_service.py:TranscriptIngestionService",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "class:server/services/transcript_ingestion_service.py:TranscriptIngestionService",
+      "target": "class:server/services/context_chunk_planning_service.py:ContextChunkPlanningService",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "class:server/services/transcript_ingestion_service.py:TranscriptIngestionService",
+      "target": "class:server/services/chunk_metadata_service.py:ChunkMetadataService",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "class:server/services/transcript_ingestion_service.py:TranscriptIngestionService",
+      "target": "class:server/services/search_chunk_builder.py:SearchChunkBuilder",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/tests/test_chunk_builder.py",
+      "target": "file:server/schemas/rag.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/tests/test_chunk_builder.py",
+      "target": "file:server/services/chunk_builder.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/tests/test_chunk_builder.py",
+      "target": "file:server/services/context_chunk_planning_service.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/services/chunk_builder.py",
+      "target": "file:server/tests/test_chunk_builder.py",
+      "type": "tested_by",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:server/tests/test_chunk_metadata_service.py",
+      "target": "file:server/schemas/rag.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/tests/test_chunk_metadata_service.py",
+      "target": "file:server/services/chunk_metadata_service.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/services/chunk_metadata_service.py",
+      "target": "file:server/tests/test_chunk_metadata_service.py",
+      "type": "tested_by",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:server/tests/test_context_chunk_planning_service.py",
+      "target": "file:server/schemas/rag.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/tests/test_context_chunk_planning_service.py",
+      "target": "file:server/services/context_chunk_planning_service.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/services/context_chunk_planning_service.py",
+      "target": "file:server/tests/test_context_chunk_planning_service.py",
+      "type": "tested_by",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:server/tests/test_search_chunk_builder.py",
+      "target": "file:server/schemas/rag.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/tests/test_search_chunk_builder.py",
+      "target": "file:server/services/search_chunk_builder.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/services/search_chunk_builder.py",
+      "target": "file:server/tests/test_search_chunk_builder.py",
+      "type": "tested_by",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:server/tests/test_transcript_ingestion_service.py",
+      "target": "file:server/schemas/rag.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/tests/test_transcript_ingestion_service.py",
+      "target": "file:server/services/context_chunk_planning_service.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/tests/test_transcript_ingestion_service.py",
+      "target": "file:server/services/transcript_ingestion_service.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/tests/test_transcript_ingestion_service.py",
+      "target": "file:server/services/transcription_service.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/services/transcript_ingestion_service.py",
+      "target": "file:server/tests/test_transcript_ingestion_service.py",
+      "type": "tested_by",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:server/db/connection.py",
+      "target": "file:server/settings.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/db/connection.py",
+      "target": "class:server/db/connection.py:Database",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/db/connection.py",
+      "target": "class:server/db/connection.py:Database",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/db/connection.py",
+      "target": "class:server/db/connection.py:DatabaseConnection",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/db/connection.py",
+      "target": "class:server/db/connection.py:DatabaseConnection",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/db/connection.py",
+      "target": "function:server/db/connection.py:get_connection",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/db/connection.py",
+      "target": "function:server/db/connection.py:get_connection",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/dependencies/auth.py",
+      "target": "file:server/db/connection.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/dependencies/auth.py",
+      "target": "file:server/repositories/auth_repository.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/dependencies/auth.py",
+      "target": "file:server/schemas/auth.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/dependencies/auth.py",
+      "target": "file:server/services/auth_service.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/dependencies/auth.py",
+      "target": "function:server/dependencies/auth.py:get_current_user",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/dependencies/auth.py",
+      "target": "function:server/dependencies/auth.py:get_current_user",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:server/dependencies/auth.py:get_current_user",
+      "target": "class:server/services/auth_service.py:AuthService",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/main.py",
+      "target": "file:server/routes/audio.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/main.py",
+      "target": "file:server/routes/auth.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/main.py",
+      "target": "file:server/routes/rag.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/main.py",
+      "target": "file:server/settings.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/repositories/auth_repository.py",
+      "target": "file:server/db/connection.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/repositories/auth_repository.py",
+      "target": "class:server/repositories/auth_repository.py:AuthRepository",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/repositories/auth_repository.py",
+      "target": "class:server/repositories/auth_repository.py:AuthRepository",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/routes/audio.py",
+      "target": "file:server/db/connection.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/routes/audio.py",
+      "target": "file:server/dependencies/auth.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/routes/audio.py",
+      "target": "file:server/repositories/rag_repository.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/routes/audio.py",
+      "target": "file:server/schemas/auth.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/routes/audio.py",
+      "target": "file:server/schemas/rag.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/routes/audio.py",
+      "target": "file:server/services/summary_service.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/routes/audio.py",
+      "target": "file:server/services/transcript_ingestion_service.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/routes/audio.py",
+      "target": "file:server/services/transcription_service.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/routes/audio.py",
+      "target": "endpoint:server/routes/audio.py:POST-/audio/summarize",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/routes/audio.py",
+      "target": "endpoint:server/routes/audio.py:POST-/audio/transcripts",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/routes/audio.py",
+      "target": "function:server/routes/audio.py:validate_audio_file",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "endpoint:server/routes/audio.py:POST-/audio/summarize",
+      "target": "function:server/routes/audio.py:validate_audio_file",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "endpoint:server/routes/audio.py:POST-/audio/transcripts",
+      "target": "function:server/routes/audio.py:validate_audio_file",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "endpoint:server/routes/audio.py:POST-/audio/transcripts",
+      "target": "function:server/dependencies/auth.py:get_current_user",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:server/routes/auth.py",
+      "target": "file:server/dependencies/auth.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/routes/auth.py",
+      "target": "file:server/schemas/auth.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/routes/auth.py",
+      "target": "file:server/services/auth_service.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/routes/auth.py",
+      "target": "endpoint:server/routes/auth.py:POST-/auth/register",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/routes/auth.py",
+      "target": "endpoint:server/routes/auth.py:POST-/auth/login",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "endpoint:server/routes/auth.py:POST-/auth/register",
+      "target": "class:server/services/auth_service.py:AuthService",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "endpoint:server/routes/auth.py:POST-/auth/login",
+      "target": "class:server/services/auth_service.py:AuthService",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/schemas/auth.py",
+      "target": "file:server/services/auth_service.py",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:server/services/auth_service.py",
+      "target": "file:server/repositories/auth_repository.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/services/auth_service.py",
+      "target": "file:server/schemas/auth.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/services/auth_service.py",
+      "target": "file:server/settings.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/services/auth_service.py",
+      "target": "class:server/services/auth_service.py:AuthService",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/services/auth_service.py",
+      "target": "class:server/services/auth_service.py:AuthService",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "class:server/services/auth_service.py:AuthService",
+      "target": "class:server/repositories/auth_repository.py:AuthRepository",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/tests/test_audio_routes.py",
+      "target": "file:server/dependencies/auth.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/tests/test_audio_routes.py",
+      "target": "file:server/main.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/tests/test_audio_routes.py",
+      "target": "file:server/routes/__init__.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/tests/test_audio_routes.py",
+      "target": "file:server/routes/audio.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/tests/test_audio_routes.py",
+      "target": "file:server/schemas/auth.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/tests/test_auth_service.py",
+      "target": "file:server/services/auth_service.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/routes/audio.py",
+      "target": "file:server/tests/test_audio_routes.py",
+      "type": "tested_by",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:server/main.py",
+      "target": "file:server/tests/test_audio_routes.py",
+      "type": "tested_by",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:server/services/auth_service.py",
+      "target": "file:server/tests/test_auth_service.py",
+      "type": "tested_by",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:server/repositories/__init__.py",
+      "target": "file:server/repositories/rag_repository.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/repositories/rag_repository.py",
+      "target": "file:server/db/connection.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/repositories/rag_repository.py",
+      "target": "file:server/schemas/rag.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/repositories/rag_repository.py",
+      "target": "class:server/repositories/rag_repository.py:RagRepository",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/repositories/rag_repository.py",
+      "target": "class:server/repositories/rag_repository.py:RagRepository",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/routes/rag.py",
+      "target": "file:server/db/connection.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/routes/rag.py",
+      "target": "file:server/repositories/rag_repository.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/routes/rag.py",
+      "target": "file:server/schemas/rag.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/routes/rag.py",
+      "target": "file:server/services/embedding_service.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/routes/rag.py",
+      "target": "file:server/services/morpheme_service.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/routes/rag.py",
+      "target": "file:server/services/rag_query_service.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/routes/rag.py",
+      "target": "file:server/services/rag_response_service.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/routes/rag.py",
+      "target": "endpoint:server/routes/rag.py:POST-/rag/query",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/routes/rag.py",
+      "target": "function:server/routes/rag.py:get_rag_query_service",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "function:server/routes/rag.py:get_rag_query_service",
+      "target": "class:server/repositories/rag_repository.py:RagRepository",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:server/routes/rag.py:get_rag_query_service",
+      "target": "class:server/services/rag_query_service.py:RagQueryService",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "endpoint:server/routes/rag.py:POST-/rag/query",
+      "target": "class:server/services/rag_query_service.py:RagQueryService",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:server/services/embedding_service.py",
+      "target": "file:server/settings.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/services/embedding_service.py",
+      "target": "class:server/services/embedding_service.py:EmbeddingService",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/services/embedding_service.py",
+      "target": "class:server/services/embedding_service.py:EmbeddingService",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/services/morpheme_service.py",
+      "target": "class:server/services/morpheme_service.py:MorphemeService",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/services/morpheme_service.py",
+      "target": "class:server/services/morpheme_service.py:MorphemeService",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/services/rag_query_service.py",
+      "target": "file:server/repositories/rag_repository.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/services/rag_query_service.py",
+      "target": "file:server/schemas/rag.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/services/rag_query_service.py",
+      "target": "file:server/services/embedding_service.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/services/rag_query_service.py",
+      "target": "file:server/services/morpheme_service.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/services/rag_query_service.py",
+      "target": "class:server/services/rag_query_service.py:RagQueryService",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/services/rag_query_service.py",
+      "target": "class:server/services/rag_query_service.py:RagQueryService",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "class:server/services/rag_query_service.py:RagQueryService",
+      "target": "class:server/repositories/rag_repository.py:RagRepository",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "class:server/services/rag_query_service.py:RagQueryService",
+      "target": "class:server/services/embedding_service.py:EmbeddingService",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "class:server/services/rag_query_service.py:RagQueryService",
+      "target": "class:server/services/morpheme_service.py:MorphemeService",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/tests/test_embedding_service.py",
+      "target": "file:server/services/embedding_service.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/services/embedding_service.py",
+      "target": "file:server/tests/test_embedding_service.py",
+      "type": "tested_by",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:server/db/__init__.py",
+      "target": "file:server/db/connection.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/services/rag_response_service.py",
+      "target": "file:server/schemas/rag.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/services/rag_response_service.py",
+      "target": "file:server/settings.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/services/summary_service.py",
+      "target": "file:server/settings.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/tests/test_rag_persistence.py",
+      "target": "file:server/db/__init__.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/tests/test_rag_persistence.py",
+      "target": "file:server/repositories/rag_repository.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/tests/test_rag_persistence.py",
+      "target": "file:server/schemas/rag.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/tests/test_rag_persistence.py",
+      "target": "file:server/settings.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/tests/test_summary_service.py",
+      "target": "file:server/services/summary_service.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/services/rag_response_service.py",
+      "target": "class:server/services/rag_response_service.py:RagResponseService",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/services/rag_response_service.py",
+      "target": "class:server/services/rag_response_service.py:RagResponseService",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/services/summary_service.py",
+      "target": "class:server/services/summary_service.py:SummaryService",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/services/summary_service.py",
+      "target": "class:server/services/summary_service.py:SummaryService",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/settings.py",
+      "target": "class:server/settings.py:Settings",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/settings.py",
+      "target": "class:server/settings.py:Settings",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/settings.py",
+      "target": "function:server/settings.py:get_settings",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/settings.py",
+      "target": "function:server/settings.py:get_settings",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/tests/test_rag_persistence.py",
+      "target": "class:server/tests/test_rag_persistence.py:FakeConnection",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "function:server/settings.py:get_settings",
+      "target": "class:server/settings.py:Settings",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/repositories/rag_repository.py",
+      "target": "file:server/tests/test_rag_persistence.py",
+      "type": "tested_by",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:server/services/summary_service.py",
+      "target": "file:server/tests/test_summary_service.py",
+      "type": "tested_by",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:server/settings.py",
+      "target": "file:server/services/rag_response_service.py",
+      "type": "configures",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:server/settings.py",
+      "target": "file:server/services/summary_service.py",
+      "type": "configures",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:server/services/audio_analysis_service.py",
+      "target": "class:server/services/audio_analysis_service.py:AudioAnalysisService",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/services/audio_analysis_service.py",
+      "target": "class:server/services/audio_analysis_service.py:AudioAnalysisService",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/services/audio_chunking.py",
+      "target": "function:server/services/audio_chunking.py:calculate_chunk_seconds",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/services/audio_chunking.py",
+      "target": "function:server/services/audio_chunking.py:build_chunk_plan",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/services/audio_chunking.py",
+      "target": "class:server/services/audio_chunking.py:AudioChunkingService",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/services/audio_chunking.py",
+      "target": "function:server/services/audio_chunking.py:calculate_chunk_seconds",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/services/audio_chunking.py",
+      "target": "function:server/services/audio_chunking.py:build_chunk_plan",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/services/audio_chunking.py",
+      "target": "class:server/services/audio_chunking.py:AudioChunkingService",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/services/transcription_service.py",
+      "target": "class:server/services/transcription_service.py:TranscriptionService",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/services/transcription_service.py",
+      "target": "class:server/services/transcription_service.py:TranscriptionService",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/services/transcription_service.py",
+      "target": "file:server/services/audio_analysis_service.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/services/transcription_service.py",
+      "target": "file:server/services/audio_chunking.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/services/transcription_service.py",
+      "target": "file:server/settings.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "class:server/services/transcription_service.py:TranscriptionService",
+      "target": "class:server/services/audio_analysis_service.py:AudioAnalysisService",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "class:server/services/transcription_service.py:TranscriptionService",
+      "target": "class:server/services/audio_chunking.py:AudioChunkingService",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "class:server/services/transcription_service.py:TranscriptionService",
+      "target": "function:server/services/audio_chunking.py:calculate_chunk_seconds",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "class:server/services/transcription_service.py:TranscriptionService",
+      "target": "function:server/services/audio_chunking.py:build_chunk_plan",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/tests/test_audio_analysis_service.py",
+      "target": "file:server/services/audio_analysis_service.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/tests/test_audio_chunking.py",
+      "target": "file:server/services/audio_chunking.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/tests/test_transcription_service.py",
+      "target": "file:server/services/audio_chunking.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/tests/test_transcription_service.py",
+      "target": "file:server/services/transcription_service.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/services/audio_analysis_service.py",
+      "target": "file:server/tests/test_audio_analysis_service.py",
+      "type": "tested_by",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:server/services/audio_chunking.py",
+      "target": "file:server/tests/test_audio_chunking.py",
+      "type": "tested_by",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:server/services/transcription_service.py",
+      "target": "file:server/tests/test_transcription_service.py",
+      "type": "tested_by",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "table:server/db/migrations/001_create_rag_persistence.sql",
+      "target": "table:server/db/migrations/001_create_rag_persistence.sql:transcripts",
+      "type": "migrates",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "table:server/db/migrations/001_create_rag_persistence.sql",
+      "target": "table:server/db/migrations/001_create_rag_persistence.sql:segments",
+      "type": "migrates",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "table:server/db/migrations/001_create_rag_persistence.sql",
+      "target": "table:server/db/migrations/001_create_rag_persistence.sql:chunks",
+      "type": "migrates",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "table:server/db/migrations/002_add_search_chunks.sql",
+      "target": "table:server/db/migrations/002_add_search_chunks.sql:search_chunks",
+      "type": "migrates",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "table:server/db/migrations/002_add_search_chunks.sql:search_chunks",
+      "target": "table:server/db/migrations/001_create_rag_persistence.sql:chunks",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "table:server/db/migrations/003_add_users.sql",
+      "target": "table:server/db/migrations/003_add_users.sql:users",
+      "type": "migrates",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "table:server/db/migrations/004_add_search_chunks_morphemes.sql",
+      "target": "table:server/db/migrations/002_add_search_chunks.sql:search_chunks",
+      "type": "migrates",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "service:docker-compose.yml",
+      "target": "service:docker-compose.yml:db",
+      "type": "serves",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "service:docker-compose.yml",
+      "target": "service:docker-compose.yml:app",
+      "type": "serves",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "service:docker-compose.yml:app",
+      "target": "service:docker-compose.yml:db",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "document:CLAUDE.md",
+      "target": "document:VOICEDOC_PROJECT.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:VOICEDOC_PROJECT.md",
+      "target": "service:docker-compose.yml",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:README.md",
+      "target": "document:PLAN.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:Directory.md",
+      "target": "document:VOICEDOC_PROJECT.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:.claude/skills/run-recordoc-be/smoke.py",
+      "target": "function:.claude/skills/run-recordoc-be/smoke.py:wait_for_server",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:.claude/skills/run-recordoc-be/smoke.py",
+      "target": "function:.claude/skills/run-recordoc-be/smoke.py:main",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:.claude/skills/run-recordoc-be/smoke.py",
+      "target": "function:.claude/skills/run-recordoc-be/smoke.py:wait_for_server",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:.claude/skills/run-recordoc-be/smoke.py",
+      "target": "function:.claude/skills/run-recordoc-be/smoke.py:main",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "function:.claude/skills/run-recordoc-be/smoke.py:main",
+      "target": "function:.claude/skills/run-recordoc-be/smoke.py:wait_for_server",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "document:.claude/skills/run-recordoc-be/SKILL.md",
+      "target": "file:.claude/skills/run-recordoc-be/smoke.py",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    }
+  ],
+  "layers": [
+    {
+      "id": "layer:api",
+      "name": "API 레이어",
+      "description": "audio·auth·rag FastAPI APIRouter와 엔드포인트로, 오디오 인제스천/요약·인증·RAG 질의 HTTP 요청을 받아 서비스 계층으로 위임한다.",
+      "nodeIds": [
+        "file:server/routes/__init__.py",
+        "file:server/routes/audio.py",
+        "endpoint:server/routes/audio.py:POST-/audio/summarize",
+        "endpoint:server/routes/audio.py:POST-/audio/transcripts",
+        "file:server/routes/auth.py",
+        "endpoint:server/routes/auth.py:POST-/auth/register",
+        "endpoint:server/routes/auth.py:POST-/auth/login",
+        "file:server/routes/rag.py",
+        "endpoint:server/routes/rag.py:POST-/rag/query"
+      ]
+    },
+    {
+      "id": "layer:service",
+      "name": "서비스 레이어",
+      "description": "오디오 분석·청킹·Whisper 전사·청크 빌더·LLM 메타데이터 보강·임베딩·형태소·RAG 질의/응답·요약·인증 등 핵심 비즈니스 로직과 FastAPI Depends 인증 의존성을 담당한다.",
+      "nodeIds": [
+        "file:server/services/chunk_builder.py",
+        "file:server/services/chunk_metadata_service.py",
+        "file:server/services/context_chunk_planning_service.py",
+        "file:server/services/search_chunk_builder.py",
+        "file:server/services/transcript_ingestion_service.py",
+        "file:server/services/auth_service.py",
+        "file:server/services/embedding_service.py",
+        "file:server/services/morpheme_service.py",
+        "file:server/services/rag_query_service.py",
+        "file:server/services/rag_response_service.py",
+        "file:server/services/summary_service.py",
+        "file:server/services/audio_analysis_service.py",
+        "file:server/services/audio_chunking.py",
+        "file:server/services/transcription_service.py",
+        "file:server/services/__init__.py",
+        "file:server/dependencies/auth.py",
+        "file:server/dependencies/__init__.py"
+      ]
+    },
+    {
+      "id": "layer:data",
+      "name": "데이터 레이어",
+      "description": "asyncpg 커넥션 풀, RagRepository·AuthRepository 데이터 액세스, transcripts/segments/chunks/search_chunks/users 테이블과 pgvector 마이그레이션을 포함한 영속화 계층이다.",
+      "nodeIds": [
+        "file:server/db/connection.py",
+        "file:server/db/__init__.py",
+        "file:server/repositories/auth_repository.py",
+        "file:server/repositories/__init__.py",
+        "file:server/repositories/rag_repository.py",
+        "table:server/db/migrations/001_create_rag_persistence.sql",
+        "table:server/db/migrations/001_create_rag_persistence.sql:transcripts",
+        "table:server/db/migrations/001_create_rag_persistence.sql:segments",
+        "table:server/db/migrations/001_create_rag_persistence.sql:chunks",
+        "table:server/db/migrations/002_add_search_chunks.sql",
+        "table:server/db/migrations/002_add_search_chunks.sql:search_chunks",
+        "table:server/db/migrations/003_add_users.sql",
+        "table:server/db/migrations/003_add_users.sql:users",
+        "table:server/db/migrations/004_add_search_chunks_morphemes.sql"
+      ]
+    },
+    {
+      "id": "layer:types",
+      "name": "스키마 레이어",
+      "description": "RAG·인증 도메인의 Pydantic 모델(transcript·segment·chunk·검색·쿼리 요청/응답, 사용자/토큰)을 정의해 모든 계층이 공유하는 타입·검증 계약을 제공한다.",
+      "nodeIds": [
+        "file:server/schemas/__init__.py",
+        "file:server/schemas/rag.py",
+        "file:server/schemas/auth.py"
+      ]
+    },
+    {
+      "id": "layer:config",
+      "name": "설정 레이어",
+      "description": "FastAPI 앱 진입점(main.py), pydantic-settings 설정 모델, .env 템플릿·pyproject.toml 등 애플리케이션 부트스트랩과 구성값을 정의한다.",
+      "nodeIds": [
+        "file:server/main.py",
+        "file:server/settings.py",
+        "config:server/.env.example",
+        "config:server/pyproject.toml",
+        "file:.understand-anything/.understandignore",
+        "config:.understand-anything/config.json"
+      ]
+    },
+    {
+      "id": "layer:test",
+      "name": "테스트 레이어",
+      "description": "오디오 파이프라인·청크 빌더·전사·임베딩·요약·영속화·라우트·인증 서비스를 Fake 의존성으로 검증하는 pytest 단위/통합 테스트와 서버 스모크 테스트 스크립트이다.",
+      "nodeIds": [
+        "file:server/tests/test_chunk_builder.py",
+        "file:server/tests/test_chunk_metadata_service.py",
+        "file:server/tests/test_context_chunk_planning_service.py",
+        "file:server/tests/test_search_chunk_builder.py",
+        "file:server/tests/test_transcript_ingestion_service.py",
+        "file:server/tests/test_audio_routes.py",
+        "file:server/tests/test_auth_service.py",
+        "file:server/tests/test_embedding_service.py",
+        "file:server/tests/test_rag_persistence.py",
+        "file:server/tests/test_summary_service.py",
+        "file:server/tests/test_audio_analysis_service.py",
+        "file:server/tests/test_audio_chunking.py",
+        "file:server/tests/test_transcription_service.py",
+        "file:.claude/skills/run-recordoc-be/smoke.py"
+      ]
+    },
+    {
+      "id": "layer:documentation",
+      "name": "문서 레이어",
+      "description": "아키텍처 가이드, 프로젝트 설계서, 코딩 컨벤션, RAG·임베딩·JWT·긴 오디오 등 plan/ 설계 문서와 Claude Code 커맨드/스킬 문서를 포함한다.",
+      "nodeIds": [
+        "document:CLAUDE.md",
+        "document:Directory.md",
+        "document:PLAN.md",
+        "document:README.md",
+        "document:VOICEDOC_PROJECT.md",
+        "document:server/README.md",
+        "document:.claude/commands/REVIEW.md",
+        "document:server/plan/chunk.md",
+        "document:server/plan/db,rag.md",
+        "document:server/plan/embedding.md",
+        "document:server/plan/jwt.md",
+        "document:server/plan/long audio.md",
+        "document:server/plan/rag.md",
+        "document:.claude/skills/run-recordoc-be/SKILL.md"
+      ]
+    },
+    {
+      "id": "layer:infrastructure",
+      "name": "인프라 레이어",
+      "description": "PostgreSQL 16 + pgvector(db)와 FastAPI 백엔드(app) 컨테이너를 정의하는 Docker Compose 오케스트레이션 구성이다.",
+      "nodeIds": [
+        "service:docker-compose.yml",
+        "service:docker-compose.yml:db",
+        "service:docker-compose.yml:app"
+      ]
+    }
+  ],
+  "tour": [
+    {
+      "order": 1,
+      "title": "프로젝트 개요와 아키텍처 가이드",
+      "description": "먼저 README.md로 프로젝트의 코딩 컨벤션과 작업 규칙을 확인한 뒤, CLAUDE.md에서 전체 아키텍처를 파악합니다. CLAUDE.md는 이 백엔드의 핵심인 `POST /audio/transcripts` 인제스천 파이프라인(오디오 업로드 -> 전사 -> 청크 -> 검색 가능한 단위 저장) 흐름과 레이어 구조, DB 스키마, 핵심 설계 결정을 설명하므로 이 투어 전체의 지도 역할을 합니다.",
+      "nodeIds": [
+        "document:README.md",
+        "document:CLAUDE.md"
+      ]
+    },
+    {
+      "order": 2,
+      "title": "애플리케이션 진입점과 설정",
+      "description": "main.py는 FastAPI 앱을 생성하고 audio·auth·rag 세 라우터를 등록하며 health 체크 엔드포인트를 노출하는 진입점입니다. settings.py는 pydantic-settings 기반 중앙 설정 모델로 DB 연결, OpenAI 모델, 오디오 청킹·동시성, JWT 비밀키 등 .env에서 로드되는 모든 구성값을 정의하며, 거의 모든 서비스가 이 설정에 의존합니다(fan-in 상위).",
+      "nodeIds": [
+        "file:server/main.py",
+        "file:server/settings.py"
+      ],
+      "languageLesson": "pydantic-settings의 BaseSettings는 환경 변수와 .env 파일을 자동으로 읽어 타입 검증된 설정 객체로 변환합니다. 필드 기본값을 두면 .env가 없어도 동작하므로 로컬 개발과 배포 환경 모두를 매끄럽게 지원합니다."
+    },
+    {
+      "order": 3,
+      "title": "도메인 스키마 (타입 계약)",
+      "description": "rag.py는 transcript·segment·chunk·search chunk·쿼리 요청/응답 등 RAG 파이프라인 전반의 Pydantic 도메인 모델을 정의하며 시간 범위·빈 값 검증 로직을 포함합니다. 이 파일은 fan-in이 가장 높아(17) 모든 계층이 공유하는 핵심 타입 계약이며, auth.py는 회원가입·로그인·토큰·현재 사용자 모델을 정의해 인증 경로의 타입을 제공합니다.",
+      "nodeIds": [
+        "file:server/schemas/rag.py",
+        "file:server/schemas/auth.py"
+      ],
+      "languageLesson": "Pydantic 모델은 필드 타입과 validator로 데이터 계약을 코드 레벨에서 강제합니다. FastAPI는 이 모델을 요청/응답 스키마로 그대로 사용해 자동 검증과 OpenAPI 문서 생성을 제공합니다."
+    },
+    {
+      "order": 4,
+      "title": "HTTP 라우트 계층",
+      "description": "Step 2의 main.py가 등록한 라우터들을 살펴봅니다. audio.py는 요약 전용(/audio/summarize)과 전체 인제스천(/audio/transcripts) 엔드포인트를, auth.py는 회원가입·로그인을, rag.py는 검색 질의(/rag/query)를 노출합니다. 세 라우터 모두 fan-out이 높아 각 도메인의 서비스 계층을 조율하는 진입 지점 역할을 합니다.",
+      "nodeIds": [
+        "file:server/routes/audio.py",
+        "file:server/routes/auth.py",
+        "file:server/routes/rag.py"
+      ]
+    },
+    {
+      "order": 5,
+      "title": "인제스천 오케스트레이터",
+      "description": "transcript_ingestion_service.py는 `/audio/transcripts` 요청의 핵심으로, 오디오 인제스천 파이프라인 전체를 순차 조율하는 최상위 오케스트레이터입니다(fan-out 12). transcript 레코드 생성 -> 전사 -> 청크 생성 -> 메타데이터 보강 -> 검색 chunk 인덱싱 -> DB 영속화 단계를 차례로 호출하므로, 이후 Step들에서 만날 개별 서비스들이 어떻게 엮이는지 보여주는 조감도입니다.",
+      "nodeIds": [
+        "file:server/services/transcript_ingestion_service.py"
+      ]
+    },
+    {
+      "order": 6,
+      "title": "오디오 분석과 청킹, Whisper 전사",
+      "description": "Step 5의 오케스트레이터가 가장 먼저 호출하는 전사 단계입니다. audio_analysis_service.py는 FFmpeg로 오디오 duration을 추출하고, audio_chunking.py는 duration과 concurrency 기반으로 overlap을 포함한 mono 16kHz MP3 chunk를 생성하며, transcription_service.py는 chunk별 OpenAI Whisper STT를 semaphore로 동시성 제한하며 수행한 뒤 재시도·overlap 해소를 거쳐 세그먼트를 병합합니다.",
+      "nodeIds": [
+        "file:server/services/audio_analysis_service.py",
+        "file:server/services/audio_chunking.py",
+        "file:server/services/transcription_service.py"
+      ],
+      "languageLesson": "asyncio.Semaphore는 동시에 실행되는 코루틴 수를 제한합니다. Whisper API 호출을 세마포어로 게이트하면 chunk를 병렬 처리하면서도 rate limit과 메모리 사용을 안전하게 통제할 수 있습니다."
+    },
+    {
+      "order": 7,
+      "title": "청크 빌더와 LLM 청크 계획",
+      "description": "병합된 segment로부터 retrieval chunk를 만드는 단계입니다. chunk_builder.py는 회의/강의/LLM 계획 기반/결정론적 fallback 등 여러 빌더 전략과 도메인별 선택 팩토리를 제공하며(fan-out 13으로 가장 넓음), context_chunk_planning_service.py는 LLM으로 의미 기반 청크 경계를 계획하고 실패 시 결정론적 fallback으로 안전하게 대체합니다.",
+      "nodeIds": [
+        "file:server/services/chunk_builder.py",
+        "file:server/services/context_chunk_planning_service.py"
+      ]
+    },
+    {
+      "order": 8,
+      "title": "메타데이터 보강과 검색 chunk 생성",
+      "description": "Step 7의 chunk를 검색에 최적화하는 단계입니다. chunk_metadata_service.py는 OpenAI LLM으로 chunk에 주제·하위주제·키워드·요약을 동시성 제한 하에 보강하며 실패 시 원본을 보존합니다. search_chunk_builder.py는 부모 chunk를 더 작은 child 검색 단위로 적응 분할하고 형태소 분석을 통해 하이브리드 검색용 SearchChunk를 생성하며, embedding_service.py는 OpenAI 임베딩 API로 텍스트를 vector(1536)으로 변환합니다.",
+      "nodeIds": [
+        "file:server/services/chunk_metadata_service.py",
+        "file:server/services/search_chunk_builder.py",
+        "file:server/services/embedding_service.py"
+      ]
+    },
+    {
+      "order": 9,
+      "title": "영속화 계층과 DB 마이그레이션",
+      "description": "Step 8까지 만들어진 transcript·segment·chunk·search_chunk를 저장하는 데이터 계층입니다. connection.py는 asyncpg 비동기 커넥션 풀을 관리하고, rag_repository.py는 세 테이블의 CRUD와 코사인 유사도 + 키워드 기반 하이브리드 검색(RRF)을 수행합니다. 001~002 마이그레이션은 pgvector embedding과 ivfflat 인덱스를 가진 transcripts/segments/chunks/search_chunks 테이블을 정의합니다.",
+      "nodeIds": [
+        "file:server/db/connection.py",
+        "file:server/repositories/rag_repository.py",
+        "table:server/db/migrations/001_create_rag_persistence.sql",
+        "table:server/db/migrations/002_add_search_chunks.sql"
+      ],
+      "languageLesson": "pgvector의 ivfflat 인덱스는 벡터 공간을 여러 리스트로 클러스터링해 근사 최근접 이웃 검색(ANN)을 빠르게 수행합니다. cosine 연산자(<=>)로 임베딩 유사도를 정렬하며, 키워드 FTS 결과와 RRF로 결합해 하이브리드 검색을 구성합니다."
+    },
+    {
+      "order": 10,
+      "title": "RAG 검색·응답 생성 경로",
+      "description": "Step 4의 rag.py가 호출하는 질의 경로입니다. rag_query_service.py는 질의 형태소 분석(morpheme_service.py)과 임베딩 생성 후 Step 9 레포지토리의 하이브리드 검색을 호출하고 부모 청크를 조회해 검색 순서대로 정렬합니다. rag_response_service.py는 검색된 chunk를 컨텍스트로 구성해 OpenAI Chat API로 최종 답변을 생성합니다. 004 마이그레이션은 형태소 기반 GIN FTS 인덱스를 추가해 키워드 검색을 뒷받침합니다.",
+      "nodeIds": [
+        "file:server/services/rag_query_service.py",
+        "file:server/services/morpheme_service.py",
+        "file:server/services/rag_response_service.py",
+        "table:server/db/migrations/004_add_search_chunks_morphemes.sql"
+      ],
+      "languageLesson": "kiwipiepy는 한국어 형태소 분석기로, 조사·어미를 제거하고 의미 있는 형태소만 추출합니다. 질의와 문서 양쪽을 동일하게 형태소화해야 키워드 매칭 정확도가 올라가며, 이는 임베딩 기반 의미 검색을 보완하는 하이브리드 검색의 키워드 축을 담당합니다."
+    },
+    {
+      "order": 11,
+      "title": "인증 경로 (JWT)",
+      "description": "Step 4의 auth.py가 위임하는 인증 흐름입니다. auth_service.py는 bcrypt 비밀번호 해싱과 JWT access·refresh 토큰 발급·검증을 담당하고, auth_repository.py는 asyncpg로 사용자 생성·이메일 조회를 수행하며, dependencies/auth.py의 get_current_user는 JWT를 검증해 보호된 라우트(예: /audio/transcripts)에 현재 사용자를 주입합니다. 003 마이그레이션은 email unique 인덱스를 가진 users 테이블을 정의합니다.",
+      "nodeIds": [
+        "file:server/services/auth_service.py",
+        "file:server/repositories/auth_repository.py",
+        "file:server/dependencies/auth.py",
+        "table:server/db/migrations/003_add_users.sql"
+      ],
+      "languageLesson": "JWT는 서명된 토큰에 사용자 식별자와 만료(exp)를 담아 무상태 인증을 구현합니다. FastAPI의 Depends로 get_current_user를 라우트에 연결하면 인증 로직을 재사용 가능한 의존성으로 분리할 수 있습니다."
+    },
+    {
+      "order": 12,
+      "title": "인프라와 컨테이너 오케스트레이션",
+      "description": "마지막으로 애플리케이션이 실행되는 환경을 봅니다. docker-compose.yml은 PostgreSQL 16 + pgvector(db)와 FastAPI 백엔드(app) 두 컨테이너를 정의해 5432/8000 포트를 노출하고 영속 볼륨을 구성하며, .env.example은 settings.py가 소비하는 모든 환경 변수 템플릿을, pyproject.toml은 fastapi·openai·asyncpg·kiwipiepy·PyJWT 등 런타임 의존성과 pytest 설정을 정의합니다.",
+      "nodeIds": [
+        "service:docker-compose.yml",
+        "config:server/.env.example",
+        "config:server/pyproject.toml"
+      ],
+      "languageLesson": "docker-compose의 depends_on은 app 컨테이너가 db 서비스 기동 이후 시작되도록 순서를 보장하고, named volume(pgdata)은 컨테이너를 재생성해도 PostgreSQL 데이터를 영속화합니다. pgvector/pgvector:pg16 이미지는 pgvector 확장이 미리 포함되어 별도 설치 없이 벡터 검색을 사용할 수 있습니다."
+    }
+  ]
+}

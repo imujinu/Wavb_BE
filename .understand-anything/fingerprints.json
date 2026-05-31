@@ -1,0 +1,4299 @@
+{
+  "version": "1.0.0",
+  "gitCommitHash": "b37094afe4fea7aef8e5344284284895bb6670e6",
+  "generatedAt": "2026-05-31T00:46:18.809Z",
+  "files": {
+    ".claude/commands/REVIEW.md": {
+      "filePath": ".claude/commands/REVIEW.md",
+      "contentHash": "85ee4b2cc0f15e3a9c4e5ec852bce26437b362b3d17933f223f369087b0e18d1",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 11,
+      "hasStructuralAnalysis": true
+    },
+    ".claude/skills/run-recordoc-be/SKILL.md": {
+      "filePath": ".claude/skills/run-recordoc-be/SKILL.md",
+      "contentHash": "37e58e9c9bd0151aa7a7ef32ce1903d276c96999476b17b143a8a4eb6fe7c0d4",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 72,
+      "hasStructuralAnalysis": true
+    },
+    ".claude/skills/run-recordoc-be/smoke.py": {
+      "filePath": ".claude/skills/run-recordoc-be/smoke.py",
+      "contentHash": "afbe1270b8c66afd74290e18466f77e03c24aa04d17a62fe4c6ba43c2f7f89c8",
+      "functions": [
+        {
+          "name": "wait_for_server",
+          "params": [
+            "timeout"
+          ],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 9
+        },
+        {
+          "name": "check",
+          "params": [
+            "label",
+            "ok",
+            "detail"
+          ],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "main",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 47
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "subprocess",
+          "specifiers": [
+            "subprocess"
+          ]
+        },
+        {
+          "source": "sys",
+          "specifiers": [
+            "sys"
+          ]
+        },
+        {
+          "source": "time",
+          "specifiers": [
+            "time"
+          ]
+        },
+        {
+          "source": "pathlib",
+          "specifiers": [
+            "Path"
+          ]
+        },
+        {
+          "source": "httpx",
+          "specifiers": [
+            "httpx"
+          ]
+        }
+      ],
+      "exports": [
+        "wait_for_server",
+        "check",
+        "main"
+      ],
+      "totalLines": 93,
+      "hasStructuralAnalysis": true
+    },
+    ".understand-anything/.understandignore": {
+      "filePath": ".understand-anything/.understandignore",
+      "contentHash": "1937dc970b85253420d549c6131d156d378ae4fb511a6b23b637f11fae02814e",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 19,
+      "hasStructuralAnalysis": false
+    },
+    ".understand-anything/config.json": {
+      "filePath": ".understand-anything/config.json",
+      "contentHash": "6241daac28ec1ac6166af17c73964fef9fa7e728b98c19706b07b7b8f0712b20",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 4,
+      "hasStructuralAnalysis": true
+    },
+    "CLAUDE.md": {
+      "filePath": "CLAUDE.md",
+      "contentHash": "2d3c9606b80e70a62cad1255f4d48fa8858905ee93f1428eeb8f07918c74c77c",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 83,
+      "hasStructuralAnalysis": true
+    },
+    "Directory.md": {
+      "filePath": "Directory.md",
+      "contentHash": "3718f68ce71daee309fbdbedfb1841c98fea7e7bd9b0f75563b2d5c97d31bfbf",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 100,
+      "hasStructuralAnalysis": true
+    },
+    "docker-compose.yml": {
+      "filePath": "docker-compose.yml",
+      "contentHash": "f7300dde94ddb846f3cc97a9a80d16d1c918bf29df93fc14f8e18267a3381b9d",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 27,
+      "hasStructuralAnalysis": true
+    },
+    "PLAN.md": {
+      "filePath": "PLAN.md",
+      "contentHash": "7b363791a34b5579197e79d05898dc84ad499360c521ee4e497806ff39320942",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 15,
+      "hasStructuralAnalysis": true
+    },
+    "README.md": {
+      "filePath": "README.md",
+      "contentHash": "9db87b1bc6a3023a45c296a1eeb64a136190d324d3dd75d5ff3ec623eea40d29",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 25,
+      "hasStructuralAnalysis": true
+    },
+    "server/.env.example": {
+      "filePath": "server/.env.example",
+      "contentHash": "2429dd142e08c5cfe079a1a037d8889d49c68e6fb83bed1bcac70f142f23d9da",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 18,
+      "hasStructuralAnalysis": true
+    },
+    "server/db/__init__.py": {
+      "filePath": "server/db/__init__.py",
+      "contentHash": "9ac521c6665a817aa0ea3b66ebca42464cbdb8de1015a2b7fb41a8c5442604b2",
+      "functions": [],
+      "classes": [],
+      "imports": [
+        {
+          "source": "db.connection",
+          "specifiers": [
+            "Database",
+            "DatabaseConnection",
+            "connect_database",
+            "disconnect_database",
+            "get_connection",
+            "get_database"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 19,
+      "hasStructuralAnalysis": true
+    },
+    "server/db/connection.py": {
+      "filePath": "server/db/connection.py",
+      "contentHash": "762825ed676980c6e6032b60b3a92adc7da00b996d66bc77757ad584b9fa4202",
+      "functions": [
+        {
+          "name": "get_database",
+          "params": [],
+          "returnType": "Database",
+          "exported": true,
+          "lineCount": 8
+        },
+        {
+          "name": "connect_database",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 2
+        },
+        {
+          "name": "disconnect_database",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 2
+        },
+        {
+          "name": "get_connection",
+          "params": [],
+          "returnType": "AsyncIterator[DatabaseConnection]",
+          "exported": true,
+          "lineCount": 5
+        }
+      ],
+      "classes": [
+        {
+          "name": "DatabaseConnection",
+          "methods": [
+            "execute",
+            "fetchrow",
+            "executemany"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "Database",
+          "methods": [
+            "__init__",
+            "connect",
+            "disconnect",
+            "pool"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 38
+        }
+      ],
+      "imports": [
+        {
+          "source": "collections.abc",
+          "specifiers": [
+            "AsyncIterator"
+          ]
+        },
+        {
+          "source": "typing",
+          "specifiers": [
+            "Any",
+            "Protocol"
+          ]
+        },
+        {
+          "source": "fastapi",
+          "specifiers": [
+            "HTTPException",
+            "status"
+          ]
+        },
+        {
+          "source": "settings",
+          "specifiers": [
+            "get_settings"
+          ]
+        }
+      ],
+      "exports": [
+        "DatabaseConnection",
+        "Database",
+        "get_database",
+        "connect_database",
+        "disconnect_database",
+        "get_connection"
+      ],
+      "totalLines": 83,
+      "hasStructuralAnalysis": true
+    },
+    "server/db/migrations/001_create_rag_persistence.sql": {
+      "filePath": "server/db/migrations/001_create_rag_persistence.sql",
+      "contentHash": "7d05034efe3cea7adeea8f3638cab31c8a5052d02d0323b708b6561fc1ac18d8",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 94,
+      "hasStructuralAnalysis": true
+    },
+    "server/db/migrations/002_add_search_chunks.sql": {
+      "filePath": "server/db/migrations/002_add_search_chunks.sql",
+      "contentHash": "6db41672945b27ccf38a5842c0f55fe04110a24e6713cc939ec05135a537dc8c",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 33,
+      "hasStructuralAnalysis": true
+    },
+    "server/db/migrations/003_add_users.sql": {
+      "filePath": "server/db/migrations/003_add_users.sql",
+      "contentHash": "b1a68a88af983bb88c43a0c4fd65845305388a00aaa410e786fa0bb980ad4d9c",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 20,
+      "hasStructuralAnalysis": true
+    },
+    "server/db/migrations/004_add_search_chunks_morphemes.sql": {
+      "filePath": "server/db/migrations/004_add_search_chunks_morphemes.sql",
+      "contentHash": "f935437ad699036e62a25cd28d49987a9690185e991fb51b5911395267eaeb67",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 17,
+      "hasStructuralAnalysis": true
+    },
+    "server/dependencies/__init__.py": {
+      "filePath": "server/dependencies/__init__.py",
+      "contentHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 1,
+      "hasStructuralAnalysis": true
+    },
+    "server/dependencies/auth.py": {
+      "filePath": "server/dependencies/auth.py",
+      "contentHash": "5cde0bd9eb19b2fa274900bcb62d50630bbad8963927b274c4ef6472fe13997a",
+      "functions": [
+        {
+          "name": "get_auth_service",
+          "params": [
+            "connection"
+          ],
+          "returnType": "AsyncIterator[AuthService]",
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "get_current_user",
+          "params": [
+            "credentials",
+            "auth_service"
+          ],
+          "returnType": "CurrentUser",
+          "exported": true,
+          "lineCount": 7
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "collections.abc",
+          "specifiers": [
+            "AsyncIterator"
+          ]
+        },
+        {
+          "source": "fastapi",
+          "specifiers": [
+            "Depends"
+          ]
+        },
+        {
+          "source": "fastapi.security",
+          "specifiers": [
+            "HTTPAuthorizationCredentials",
+            "HTTPBearer"
+          ]
+        },
+        {
+          "source": "db.connection",
+          "specifiers": [
+            "DatabaseConnection",
+            "get_connection"
+          ]
+        },
+        {
+          "source": "repositories.auth_repository",
+          "specifiers": [
+            "AuthRepository"
+          ]
+        },
+        {
+          "source": "schemas.auth",
+          "specifiers": [
+            "CurrentUser"
+          ]
+        },
+        {
+          "source": "services.auth_service",
+          "specifiers": [
+            "AuthService"
+          ]
+        }
+      ],
+      "exports": [
+        "get_auth_service",
+        "get_current_user"
+      ],
+      "totalLines": 32,
+      "hasStructuralAnalysis": true
+    },
+    "server/main.py": {
+      "filePath": "server/main.py",
+      "contentHash": "922b9b768d12c9efc559314f77f5e8af79da055137a93faad1b6ce6e29d5d367",
+      "functions": [
+        {
+          "name": "health",
+          "params": [],
+          "returnType": "dict[str, str]",
+          "exported": true,
+          "lineCount": 2
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "fastapi",
+          "specifiers": [
+            "FastAPI"
+          ]
+        },
+        {
+          "source": "fastapi.middleware.cors",
+          "specifiers": [
+            "CORSMiddleware"
+          ]
+        },
+        {
+          "source": "routes.audio",
+          "specifiers": [
+            "audio_router"
+          ]
+        },
+        {
+          "source": "routes.auth",
+          "specifiers": [
+            "auth_router"
+          ]
+        },
+        {
+          "source": "routes.rag",
+          "specifiers": [
+            "rag_router"
+          ]
+        },
+        {
+          "source": "settings",
+          "specifiers": [
+            "get_settings"
+          ]
+        }
+      ],
+      "exports": [
+        "health"
+      ],
+      "totalLines": 30,
+      "hasStructuralAnalysis": true
+    },
+    "server/plan/chunk.md": {
+      "filePath": "server/plan/chunk.md",
+      "contentHash": "c1e000392ea62de402344e67b9eec9a89c324d00103ae562d78d9ab1c3edeb14",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 156,
+      "hasStructuralAnalysis": true
+    },
+    "server/plan/db,rag.md": {
+      "filePath": "server/plan/db,rag.md",
+      "contentHash": "d8532f706932d4acb80ab6755aef18cf7742ec855e7a087189289845b3d8419f",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 276,
+      "hasStructuralAnalysis": true
+    },
+    "server/plan/embedding.md": {
+      "filePath": "server/plan/embedding.md",
+      "contentHash": "49c46f7566bff078cd436da5eb77f4316e0168ff4013f0696a8d8dd47324412a",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 215,
+      "hasStructuralAnalysis": true
+    },
+    "server/plan/jwt.md": {
+      "filePath": "server/plan/jwt.md",
+      "contentHash": "d24c62a3305e3be1f027c134dc3f786847a648e6ec33ac3c2361182119984b83",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 263,
+      "hasStructuralAnalysis": true
+    },
+    "server/plan/long audio.md": {
+      "filePath": "server/plan/long audio.md",
+      "contentHash": "6d4e69b4337f003ae0ebd6111679763eed511568e564ece70958976918c7de1b",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 94,
+      "hasStructuralAnalysis": true
+    },
+    "server/plan/rag.md": {
+      "filePath": "server/plan/rag.md",
+      "contentHash": "1c7eb04f44f9f80473e14e6b3dba092bf38ffc6fde75b71c83fa64efefb4e09f",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 413,
+      "hasStructuralAnalysis": true
+    },
+    "server/pyproject.toml": {
+      "filePath": "server/pyproject.toml",
+      "contentHash": "6d3aa7a1dccd532bc970c101ec33863a0b3db40e0309d8b9acc5777f6738e753",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 32,
+      "hasStructuralAnalysis": true
+    },
+    "server/README.md": {
+      "filePath": "server/README.md",
+      "contentHash": "539424e8ce727009810eeea52188f0626ab4640804e96ebfa87edfb459ce47c9",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 50,
+      "hasStructuralAnalysis": true
+    },
+    "server/repositories/__init__.py": {
+      "filePath": "server/repositories/__init__.py",
+      "contentHash": "d8a60da99b861d813b071d9cd345224085f0fe5248defdd4b3621fa49f889313",
+      "functions": [],
+      "classes": [],
+      "imports": [
+        {
+          "source": "repositories.rag_repository",
+          "specifiers": [
+            "RagRepository"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 5,
+      "hasStructuralAnalysis": true
+    },
+    "server/repositories/auth_repository.py": {
+      "filePath": "server/repositories/auth_repository.py",
+      "contentHash": "ff371465a04dca2aa4f257cd7dcb4f9f65f9e4ebd674517bdfcb7ea46032127d",
+      "functions": [],
+      "classes": [
+        {
+          "name": "AuthRepository",
+          "methods": [
+            "__init__",
+            "create_user",
+            "get_user_by_email"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 46
+        }
+      ],
+      "imports": [
+        {
+          "source": "uuid",
+          "specifiers": [
+            "UUID",
+            "uuid4"
+          ]
+        },
+        {
+          "source": "db.connection",
+          "specifiers": [
+            "DatabaseConnection"
+          ]
+        }
+      ],
+      "exports": [
+        "AuthRepository"
+      ],
+      "totalLines": 52,
+      "hasStructuralAnalysis": true
+    },
+    "server/repositories/rag_repository.py": {
+      "filePath": "server/repositories/rag_repository.py",
+      "contentHash": "c83ded96eda4c70ceca312fb2bd01071ebeeae96547174fc6c7c473ab242a78c",
+      "functions": [],
+      "classes": [
+        {
+          "name": "RagRepository",
+          "methods": [
+            "__init__",
+            "create_transcript",
+            "update_transcript_result",
+            "insert_segments",
+            "insert_chunks",
+            "fetch_chunks_by_transcript",
+            "insert_search_chunks",
+            "search_chunks_hybrid",
+            "_search_by_keyword",
+            "_search_by_vector",
+            "get_parent_chunks",
+            "_to_json",
+            "_to_vector_literal"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 550
+        }
+      ],
+      "imports": [
+        {
+          "source": "asyncio",
+          "specifiers": [
+            "asyncio"
+          ]
+        },
+        {
+          "source": "json",
+          "specifiers": [
+            "json"
+          ]
+        },
+        {
+          "source": "typing",
+          "specifiers": [
+            "Any"
+          ]
+        },
+        {
+          "source": "uuid",
+          "specifiers": [
+            "UUID",
+            "uuid4"
+          ]
+        },
+        {
+          "source": "db.connection",
+          "specifiers": [
+            "DatabaseConnection"
+          ]
+        },
+        {
+          "source": "schemas.rag",
+          "specifiers": [
+            "ChunkCreate",
+            "ChunkRow",
+            "ParentChunkResult",
+            "SearchChunkCreate",
+            "SearchChunkHit",
+            "SegmentCreate",
+            "TranscriptCreate",
+            "TranscriptResultUpdate"
+          ]
+        }
+      ],
+      "exports": [
+        "RagRepository"
+      ],
+      "totalLines": 560,
+      "hasStructuralAnalysis": true
+    },
+    "server/routes/__init__.py": {
+      "filePath": "server/routes/__init__.py",
+      "contentHash": "7eb70257593da06f682a3ddda54a9d260d4fc514f645237f5ca74b08f8da61a6",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 2,
+      "hasStructuralAnalysis": true
+    },
+    "server/routes/audio.py": {
+      "filePath": "server/routes/audio.py",
+      "contentHash": "498d8350be0f8a132adea329f91edf6522145558eb9a63bf8643838a2ad015d0",
+      "functions": [
+        {
+          "name": "get_rag_repository",
+          "params": [
+            "connection"
+          ],
+          "returnType": "AsyncIterator[RagRepository]",
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "validate_audio_file",
+          "params": [
+            "file"
+          ],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 10
+        },
+        {
+          "name": "summarize_audio",
+          "params": [
+            "file"
+          ],
+          "returnType": "AudioSummaryResponse",
+          "exported": true,
+          "lineCount": 15
+        },
+        {
+          "name": "create_audio_transcript",
+          "params": [
+            "file",
+            "domain_type",
+            "title",
+            "current_user",
+            "repository"
+          ],
+          "returnType": "AudioTranscriptResponse",
+          "exported": true,
+          "lineCount": 26
+        }
+      ],
+      "classes": [
+        {
+          "name": "AudioSummaryResponse",
+          "methods": [],
+          "properties": [
+            "transcript",
+            "summary"
+          ],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "AudioTranscriptResponse",
+          "methods": [],
+          "properties": [
+            "transcript_id",
+            "transcript",
+            "duration_seconds",
+            "stt_model",
+            "segment_count",
+            "status"
+          ],
+          "exported": true,
+          "lineCount": 7
+        }
+      ],
+      "imports": [
+        {
+          "source": "collections.abc",
+          "specifiers": [
+            "AsyncIterator"
+          ]
+        },
+        {
+          "source": "uuid",
+          "specifiers": [
+            "UUID"
+          ]
+        },
+        {
+          "source": "fastapi",
+          "specifiers": [
+            "APIRouter",
+            "Depends",
+            "File",
+            "Form",
+            "HTTPException",
+            "UploadFile",
+            "status"
+          ]
+        },
+        {
+          "source": "pydantic",
+          "specifiers": [
+            "BaseModel"
+          ]
+        },
+        {
+          "source": "db.connection",
+          "specifiers": [
+            "DatabaseConnection",
+            "get_connection"
+          ]
+        },
+        {
+          "source": "dependencies.auth",
+          "specifiers": [
+            "get_current_user"
+          ]
+        },
+        {
+          "source": "repositories.rag_repository",
+          "specifiers": [
+            "RagRepository"
+          ]
+        },
+        {
+          "source": "schemas.auth",
+          "specifiers": [
+            "CurrentUser"
+          ]
+        },
+        {
+          "source": "schemas.rag",
+          "specifiers": [
+            "DomainType"
+          ]
+        },
+        {
+          "source": "services.summary_service",
+          "specifiers": [
+            "SummaryService"
+          ]
+        },
+        {
+          "source": "services.transcript_ingestion_service",
+          "specifiers": [
+            "TranscriptIngestionService"
+          ]
+        },
+        {
+          "source": "services.transcription_service",
+          "specifiers": [
+            "TranscriptionService"
+          ]
+        }
+      ],
+      "exports": [
+        "AudioSummaryResponse",
+        "AudioTranscriptResponse",
+        "get_rag_repository",
+        "validate_audio_file",
+        "summarize_audio",
+        "create_audio_transcript"
+      ],
+      "totalLines": 99,
+      "hasStructuralAnalysis": true
+    },
+    "server/routes/auth.py": {
+      "filePath": "server/routes/auth.py",
+      "contentHash": "fdbe6c8b75b741da4bde386d70ff66fe9786fe8eb236a38eaf921dfd4a1bd156",
+      "functions": [
+        {
+          "name": "register",
+          "params": [
+            "body",
+            "auth_service"
+          ],
+          "returnType": "RegisterResponse",
+          "exported": true,
+          "lineCount": 13
+        },
+        {
+          "name": "login",
+          "params": [
+            "body",
+            "auth_service"
+          ],
+          "returnType": "TokenResponse",
+          "exported": true,
+          "lineCount": 8
+        }
+      ],
+      "classes": [
+        {
+          "name": "RegisterResponse",
+          "methods": [],
+          "properties": [
+            "user_id"
+          ],
+          "exported": true,
+          "lineCount": 2
+        }
+      ],
+      "imports": [
+        {
+          "source": "uuid",
+          "specifiers": [
+            "UUID"
+          ]
+        },
+        {
+          "source": "fastapi",
+          "specifiers": [
+            "APIRouter",
+            "Depends",
+            "status"
+          ]
+        },
+        {
+          "source": "pydantic",
+          "specifiers": [
+            "BaseModel"
+          ]
+        },
+        {
+          "source": "dependencies.auth",
+          "specifiers": [
+            "get_auth_service"
+          ]
+        },
+        {
+          "source": "schemas.auth",
+          "specifiers": [
+            "TokenResponse",
+            "UserCreate",
+            "UserLogin"
+          ]
+        },
+        {
+          "source": "services.auth_service",
+          "specifiers": [
+            "AuthService"
+          ]
+        }
+      ],
+      "exports": [
+        "RegisterResponse",
+        "register",
+        "login"
+      ],
+      "totalLines": 51,
+      "hasStructuralAnalysis": true
+    },
+    "server/routes/rag.py": {
+      "filePath": "server/routes/rag.py",
+      "contentHash": "dcc209ff7ecdd9370cc8a5ed159cc6c135ec5a52f17e29bc87352c56bcca768d",
+      "functions": [
+        {
+          "name": "get_rag_query_service",
+          "params": [
+            "connection"
+          ],
+          "returnType": "AsyncIterator[RagQueryService]",
+          "exported": true,
+          "lineCount": 14
+        },
+        {
+          "name": "get_rag_response_service",
+          "params": [],
+          "returnType": "RagResponseService",
+          "exported": true,
+          "lineCount": 2
+        },
+        {
+          "name": "rag_query",
+          "params": [
+            "request",
+            "rag_query_service",
+            "rag_response_service"
+          ],
+          "returnType": "RagQueryResponse",
+          "exported": true,
+          "lineCount": 33
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "collections.abc",
+          "specifiers": [
+            "AsyncIterator"
+          ]
+        },
+        {
+          "source": "fastapi",
+          "specifiers": [
+            "APIRouter",
+            "Depends"
+          ]
+        },
+        {
+          "source": "db.connection",
+          "specifiers": [
+            "DatabaseConnection",
+            "get_connection"
+          ]
+        },
+        {
+          "source": "repositories.rag_repository",
+          "specifiers": [
+            "RagRepository"
+          ]
+        },
+        {
+          "source": "schemas.rag",
+          "specifiers": [
+            "RagQueryRequest",
+            "RagQueryResponse"
+          ]
+        },
+        {
+          "source": "services.embedding_service",
+          "specifiers": [
+            "EmbeddingService"
+          ]
+        },
+        {
+          "source": "services.morpheme_service",
+          "specifiers": [
+            "MorphemeService"
+          ]
+        },
+        {
+          "source": "services.rag_query_service",
+          "specifiers": [
+            "RagQueryService"
+          ]
+        },
+        {
+          "source": "services.rag_response_service",
+          "specifiers": [
+            "RagResponseService"
+          ]
+        }
+      ],
+      "exports": [
+        "get_rag_query_service",
+        "get_rag_response_service",
+        "rag_query"
+      ],
+      "totalLines": 85,
+      "hasStructuralAnalysis": true
+    },
+    "server/schemas/__init__.py": {
+      "filePath": "server/schemas/__init__.py",
+      "contentHash": "0d70d2e054dc1f704a7a578f2ff33b330b9f815f3e1dc2b2d6840aee73a47768",
+      "functions": [],
+      "classes": [],
+      "imports": [
+        {
+          "source": "schemas.rag",
+          "specifiers": [
+            "ChunkCreate",
+            "SegmentCreate",
+            "TranscriptCreate",
+            "TranscriptResultUpdate"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 15,
+      "hasStructuralAnalysis": true
+    },
+    "server/schemas/auth.py": {
+      "filePath": "server/schemas/auth.py",
+      "contentHash": "f2c5a4020f0aaf4b84de180b8cf0f3ec589f0d33b6c08a6dc244f2259ecd244a",
+      "functions": [],
+      "classes": [
+        {
+          "name": "UserCreate",
+          "methods": [],
+          "properties": [
+            "nickname",
+            "email",
+            "password"
+          ],
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "UserLogin",
+          "methods": [],
+          "properties": [
+            "email",
+            "password"
+          ],
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "TokenResponse",
+          "methods": [],
+          "properties": [
+            "access_token",
+            "refresh_token",
+            "token_type"
+          ],
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "CurrentUser",
+          "methods": [],
+          "properties": [
+            "user_id",
+            "email"
+          ],
+          "exported": true,
+          "lineCount": 5
+        }
+      ],
+      "imports": [
+        {
+          "source": "uuid",
+          "specifiers": [
+            "UUID"
+          ]
+        },
+        {
+          "source": "pydantic",
+          "specifiers": [
+            "BaseModel",
+            "ConfigDict",
+            "EmailStr",
+            "Field"
+          ]
+        }
+      ],
+      "exports": [
+        "UserCreate",
+        "UserLogin",
+        "TokenResponse",
+        "CurrentUser"
+      ],
+      "totalLines": 41,
+      "hasStructuralAnalysis": true
+    },
+    "server/schemas/rag.py": {
+      "filePath": "server/schemas/rag.py",
+      "contentHash": "bcbaff0379fa849cfd39c43ffa90b67d2dfad460dbe0b26a28db9d15612c0017",
+      "functions": [],
+      "classes": [
+        {
+          "name": "TranscriptCreate",
+          "methods": [],
+          "properties": [
+            "domain_type",
+            "source_audio_uri",
+            "user_id",
+            "title",
+            "original_filename",
+            "mime_type",
+            "duration_seconds",
+            "language",
+            "stt_model",
+            "status"
+          ],
+          "exported": true,
+          "lineCount": 13
+        },
+        {
+          "name": "TranscriptResultUpdate",
+          "methods": [],
+          "properties": [
+            "full_text",
+            "summary",
+            "duration_seconds",
+            "stt_model",
+            "status",
+            "error_message"
+          ],
+          "exported": true,
+          "lineCount": 9
+        },
+        {
+          "name": "SegmentCreate",
+          "methods": [
+            "validate_time_range"
+          ],
+          "properties": [
+            "segment_index",
+            "start_seconds",
+            "end_seconds",
+            "text",
+            "speaker_label",
+            "confidence",
+            "raw_metadata"
+          ],
+          "exported": true,
+          "lineCount": 16
+        },
+        {
+          "name": "ChunkCreate",
+          "methods": [
+            "remove_blank_values",
+            "validate_ranges"
+          ],
+          "properties": [
+            "domain_type",
+            "chunk_index",
+            "chunk_strategy",
+            "text",
+            "segment_start_index",
+            "segment_end_index",
+            "start_seconds",
+            "end_seconds",
+            "summary",
+            "topic",
+            "subtopic",
+            "keywords",
+            "speaker_labels",
+            "metadata",
+            "embedding_model",
+            "embedding"
+          ],
+          "exported": true,
+          "lineCount": 42
+        },
+        {
+          "name": "ChunkRow",
+          "methods": [],
+          "properties": [
+            "id",
+            "chunk_index",
+            "segment_start_index",
+            "segment_end_index",
+            "start_seconds",
+            "end_seconds",
+            "text",
+            "metadata"
+          ],
+          "exported": true,
+          "lineCount": 11
+        },
+        {
+          "name": "SearchChunkCreate",
+          "methods": [],
+          "properties": [
+            "parent_chunk_id",
+            "child_index",
+            "segment_start_index",
+            "segment_end_index",
+            "start_seconds",
+            "end_seconds",
+            "text",
+            "text_morphemes",
+            "metadata",
+            "embedding_model",
+            "embedding"
+          ],
+          "exported": true,
+          "lineCount": 14
+        },
+        {
+          "name": "SearchChunkHit",
+          "methods": [],
+          "properties": [
+            "id",
+            "transcript_id",
+            "parent_chunk_id",
+            "child_index",
+            "start_seconds",
+            "end_seconds",
+            "text",
+            "score",
+            "embedding_model"
+          ],
+          "exported": true,
+          "lineCount": 13
+        },
+        {
+          "name": "ParentChunkResult",
+          "methods": [],
+          "properties": [
+            "id",
+            "transcript_id",
+            "domain_type",
+            "chunk_index",
+            "topic",
+            "subtopic",
+            "keywords",
+            "speaker_labels",
+            "start_seconds",
+            "end_seconds",
+            "text",
+            "summary",
+            "metadata"
+          ],
+          "exported": true,
+          "lineCount": 16
+        },
+        {
+          "name": "RagQueryRequest",
+          "methods": [],
+          "properties": [
+            "query",
+            "transcript_id",
+            "user_id",
+            "top_k"
+          ],
+          "exported": true,
+          "lineCount": 8
+        },
+        {
+          "name": "RagQueryResponse",
+          "methods": [],
+          "properties": [
+            "answer",
+            "sources",
+            "chunks_retrieved"
+          ],
+          "exported": true,
+          "lineCount": 6
+        }
+      ],
+      "imports": [
+        {
+          "source": "typing",
+          "specifiers": [
+            "Any",
+            "Literal"
+          ]
+        },
+        {
+          "source": "uuid",
+          "specifiers": [
+            "UUID"
+          ]
+        },
+        {
+          "source": "pydantic",
+          "specifiers": [
+            "BaseModel",
+            "ConfigDict",
+            "Field",
+            "field_validator",
+            "model_validator"
+          ]
+        }
+      ],
+      "exports": [
+        "TranscriptCreate",
+        "TranscriptResultUpdate",
+        "SegmentCreate",
+        "ChunkCreate",
+        "ChunkRow",
+        "SearchChunkCreate",
+        "SearchChunkHit",
+        "ParentChunkResult",
+        "RagQueryRequest",
+        "RagQueryResponse"
+      ],
+      "totalLines": 189,
+      "hasStructuralAnalysis": true
+    },
+    "server/services/__init__.py": {
+      "filePath": "server/services/__init__.py",
+      "contentHash": "7eb70257593da06f682a3ddda54a9d260d4fc514f645237f5ca74b08f8da61a6",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 2,
+      "hasStructuralAnalysis": true
+    },
+    "server/services/audio_analysis_service.py": {
+      "filePath": "server/services/audio_analysis_service.py",
+      "contentHash": "8cbb889f0f9fbdef426a7a896c8968d54224a3a0e5dbc980d8a960205eb132a7",
+      "functions": [],
+      "classes": [
+        {
+          "name": "AudioAnalysis",
+          "methods": [],
+          "properties": [
+            "duration_seconds"
+          ],
+          "exported": true,
+          "lineCount": 2
+        },
+        {
+          "name": "AudioAnalysisService",
+          "methods": [
+            "__init__",
+            "analyze",
+            "_parse_duration_seconds"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 38
+        }
+      ],
+      "imports": [
+        {
+          "source": "re",
+          "specifiers": [
+            "re"
+          ]
+        },
+        {
+          "source": "subprocess",
+          "specifiers": [
+            "subprocess"
+          ]
+        },
+        {
+          "source": "dataclasses",
+          "specifiers": [
+            "dataclass"
+          ]
+        },
+        {
+          "source": "pathlib",
+          "specifiers": [
+            "Path"
+          ]
+        },
+        {
+          "source": "imageio_ffmpeg",
+          "specifiers": [
+            "imageio_ffmpeg"
+          ]
+        },
+        {
+          "source": "fastapi",
+          "specifiers": [
+            "HTTPException",
+            "status"
+          ]
+        }
+      ],
+      "exports": [
+        "AudioAnalysis",
+        "AudioAnalysisService"
+      ],
+      "totalLines": 54,
+      "hasStructuralAnalysis": true
+    },
+    "server/services/audio_chunking.py": {
+      "filePath": "server/services/audio_chunking.py",
+      "contentHash": "5bd929c6c5f49aa4d12861eb4c6bf15bc4465b6336a65b12f50955c2ad40a5b1",
+      "functions": [
+        {
+          "name": "clamp",
+          "params": [
+            "value",
+            "minimum",
+            "maximum"
+          ],
+          "returnType": "int",
+          "exported": true,
+          "lineCount": 2
+        },
+        {
+          "name": "calculate_chunk_seconds",
+          "params": [
+            "duration_seconds",
+            "concurrency",
+            "min_seconds",
+            "max_seconds"
+          ],
+          "returnType": "int",
+          "exported": true,
+          "lineCount": 15
+        },
+        {
+          "name": "build_chunk_plan",
+          "params": [
+            "duration_seconds",
+            "chunk_seconds",
+            "overlap_seconds"
+          ],
+          "returnType": "list[ChunkPlan]",
+          "exported": true,
+          "lineCount": 35
+        }
+      ],
+      "classes": [
+        {
+          "name": "ChunkPlan",
+          "methods": [],
+          "properties": [
+            "index",
+            "start_seconds",
+            "duration_seconds",
+            "leading_overlap_seconds"
+          ],
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "AudioChunk",
+          "methods": [],
+          "properties": [
+            "index",
+            "path",
+            "leading_overlap_seconds",
+            "start_seconds",
+            "duration_seconds"
+          ],
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "AudioChunkingService",
+          "methods": [
+            "__init__",
+            "create_chunks",
+            "_create_chunk",
+            "_candidate_bitrates"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 96
+        }
+      ],
+      "imports": [
+        {
+          "source": "dataclasses",
+          "specifiers": [
+            "dataclass"
+          ]
+        },
+        {
+          "source": "math",
+          "specifiers": [
+            "ceil"
+          ]
+        },
+        {
+          "source": "pathlib",
+          "specifiers": [
+            "Path"
+          ]
+        },
+        {
+          "source": "subprocess",
+          "specifiers": [
+            "subprocess"
+          ]
+        },
+        {
+          "source": "imageio_ffmpeg",
+          "specifiers": [
+            "imageio_ffmpeg"
+          ]
+        },
+        {
+          "source": "fastapi",
+          "specifiers": [
+            "HTTPException",
+            "status"
+          ]
+        }
+      ],
+      "exports": [
+        "ChunkPlan",
+        "AudioChunk",
+        "clamp",
+        "calculate_chunk_seconds",
+        "build_chunk_plan",
+        "AudioChunkingService"
+      ],
+      "totalLines": 181,
+      "hasStructuralAnalysis": true
+    },
+    "server/services/auth_service.py": {
+      "filePath": "server/services/auth_service.py",
+      "contentHash": "86fe15b11276edb9cc5c2bded000675b05cb881c7e06520b31d65bc1b22fddb9",
+      "functions": [],
+      "classes": [
+        {
+          "name": "AuthService",
+          "methods": [
+            "__init__",
+            "register",
+            "login",
+            "decode_access_token"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 118
+        }
+      ],
+      "imports": [
+        {
+          "source": "asyncio",
+          "specifiers": [
+            "asyncio"
+          ]
+        },
+        {
+          "source": "datetime",
+          "specifiers": [
+            "datetime",
+            "timedelta",
+            "timezone"
+          ]
+        },
+        {
+          "source": "uuid",
+          "specifiers": [
+            "UUID"
+          ]
+        },
+        {
+          "source": "bcrypt",
+          "specifiers": [
+            "bcrypt"
+          ]
+        },
+        {
+          "source": "jwt",
+          "specifiers": [
+            "jwt"
+          ]
+        },
+        {
+          "source": "fastapi",
+          "specifiers": [
+            "HTTPException",
+            "status"
+          ]
+        },
+        {
+          "source": "repositories.auth_repository",
+          "specifiers": [
+            "AuthRepository"
+          ]
+        },
+        {
+          "source": "schemas.auth",
+          "specifiers": [
+            "CurrentUser",
+            "TokenResponse"
+          ]
+        },
+        {
+          "source": "settings",
+          "specifiers": [
+            "get_settings"
+          ]
+        }
+      ],
+      "exports": [
+        "AuthService"
+      ],
+      "totalLines": 132,
+      "hasStructuralAnalysis": true
+    },
+    "server/services/chunk_builder.py": {
+      "filePath": "server/services/chunk_builder.py",
+      "contentHash": "ba32c9df715858a0b1f7d1d7c301c6e5e2c5a2cad90ce3a967ad4e859a0c1702",
+      "functions": [
+        {
+          "name": "get_chunk_builder",
+          "params": [
+            "domain_type"
+          ],
+          "returnType": "TranscriptChunkBuilder",
+          "exported": true,
+          "lineCount": 6
+        }
+      ],
+      "classes": [
+        {
+          "name": "TranscriptChunkBuilder",
+          "methods": [
+            "build"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "MeetingChunkBuilder",
+          "methods": [
+            "__init__",
+            "build",
+            "_ordered_non_empty_segments",
+            "_should_start_new_chunk",
+            "_to_chunk",
+            "_join_text",
+            "_speaker_labels",
+            "_estimate_tokens"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 101
+        },
+        {
+          "name": "LectureChunkBuilder",
+          "methods": [
+            "__init__",
+            "build",
+            "_ordered_non_empty_segments",
+            "_overlap_tail",
+            "_to_chunk",
+            "_join_text",
+            "_speaker_labels",
+            "_estimate_tokens"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 103
+        },
+        {
+          "name": "ContextPlannedChunkBuilder",
+          "methods": [
+            "build",
+            "_ordered_non_empty_segments",
+            "_to_chunk",
+            "_chunk_goal",
+            "_chunk_strategy",
+            "_join_text",
+            "_speaker_labels"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 91
+        },
+        {
+          "name": "DeterministicFallbackChunkBuilder",
+          "methods": [
+            "__init__",
+            "build",
+            "_build_plan_groups",
+            "_to_plan_group",
+            "_ordered_non_empty_segments"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 70
+        }
+      ],
+      "imports": [
+        {
+          "source": "abc",
+          "specifiers": [
+            "ABC",
+            "abstractmethod"
+          ]
+        },
+        {
+          "source": "math",
+          "specifiers": [
+            "ceil"
+          ]
+        },
+        {
+          "source": "schemas.rag",
+          "specifiers": [
+            "ChunkCreate",
+            "DomainType",
+            "SegmentCreate"
+          ]
+        },
+        {
+          "source": "services.context_chunk_planning_service",
+          "specifiers": [
+            "ContextChunkPlanGroup"
+          ]
+        }
+      ],
+      "exports": [
+        "TranscriptChunkBuilder",
+        "MeetingChunkBuilder",
+        "LectureChunkBuilder",
+        "ContextPlannedChunkBuilder",
+        "DeterministicFallbackChunkBuilder",
+        "get_chunk_builder"
+      ],
+      "totalLines": 395,
+      "hasStructuralAnalysis": true
+    },
+    "server/services/chunk_metadata_service.py": {
+      "filePath": "server/services/chunk_metadata_service.py",
+      "contentHash": "fec8b5f27eb26f4bd2ace17779b317cd6adbf0495455c2d1f3e5d3237c13c24e",
+      "functions": [],
+      "classes": [
+        {
+          "name": "ChunkMetadata",
+          "methods": [],
+          "properties": [
+            "topic",
+            "subtopic",
+            "keywords",
+            "summary",
+            "extra_metadata"
+          ],
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "ChunkMetadataService",
+          "methods": [
+            "__init__",
+            "enrich_chunks",
+            "_enrich_chunk",
+            "_create_metadata",
+            "_build_prompt",
+            "_parse_metadata",
+            "_extract_extra_metadata",
+            "_apply_metadata",
+            "_clean_string",
+            "_clean_strings"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 200
+        }
+      ],
+      "imports": [
+        {
+          "source": "asyncio",
+          "specifiers": [
+            "asyncio"
+          ]
+        },
+        {
+          "source": "json",
+          "specifiers": [
+            "json"
+          ]
+        },
+        {
+          "source": "dataclasses",
+          "specifiers": [
+            "dataclass"
+          ]
+        },
+        {
+          "source": "typing",
+          "specifiers": [
+            "Any"
+          ]
+        },
+        {
+          "source": "fastapi",
+          "specifiers": [
+            "HTTPException",
+            "status"
+          ]
+        },
+        {
+          "source": "openai",
+          "specifiers": [
+            "APIError",
+            "AsyncOpenAI"
+          ]
+        },
+        {
+          "source": "schemas.rag",
+          "specifiers": [
+            "ChunkCreate",
+            "DomainType"
+          ]
+        },
+        {
+          "source": "settings",
+          "specifiers": [
+            "get_settings"
+          ]
+        }
+      ],
+      "exports": [
+        "ChunkMetadata",
+        "ChunkMetadataService"
+      ],
+      "totalLines": 229,
+      "hasStructuralAnalysis": true
+    },
+    "server/services/context_chunk_planning_service.py": {
+      "filePath": "server/services/context_chunk_planning_service.py",
+      "contentHash": "2195dbcd87e8464126eec82c689fcdb45fc241daa71351227f199e6f6e3fb87d",
+      "functions": [],
+      "classes": [
+        {
+          "name": "ContextChunkPlanGroup",
+          "methods": [],
+          "properties": [
+            "segment_start_index",
+            "segment_end_index",
+            "topic",
+            "reason",
+            "summary_hint",
+            "planning_method",
+            "planning_error"
+          ],
+          "exported": true,
+          "lineCount": 8
+        },
+        {
+          "name": "ContextChunkPlanningService",
+          "methods": [
+            "__init__",
+            "plan_chunks",
+            "_request_plan",
+            "_build_prompt",
+            "_parse_plan",
+            "_validate_plan",
+            "_fallback_plan",
+            "_to_fallback_group",
+            "_ordered_non_empty_segments",
+            "_clean_string"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 292
+        }
+      ],
+      "imports": [
+        {
+          "source": "json",
+          "specifiers": [
+            "json"
+          ]
+        },
+        {
+          "source": "logging",
+          "specifiers": [
+            "logging"
+          ]
+        },
+        {
+          "source": "dataclasses",
+          "specifiers": [
+            "dataclass"
+          ]
+        },
+        {
+          "source": "typing",
+          "specifiers": [
+            "Any"
+          ]
+        },
+        {
+          "source": "fastapi",
+          "specifiers": [
+            "HTTPException",
+            "status"
+          ]
+        },
+        {
+          "source": "openai",
+          "specifiers": [
+            "APIError",
+            "AsyncOpenAI"
+          ]
+        },
+        {
+          "source": "schemas.rag",
+          "specifiers": [
+            "DomainType",
+            "SegmentCreate"
+          ]
+        },
+        {
+          "source": "settings",
+          "specifiers": [
+            "get_settings"
+          ]
+        }
+      ],
+      "exports": [
+        "ContextChunkPlanGroup",
+        "ContextChunkPlanningService"
+      ],
+      "totalLines": 325,
+      "hasStructuralAnalysis": true
+    },
+    "server/services/embedding_service.py": {
+      "filePath": "server/services/embedding_service.py",
+      "contentHash": "fd8ca8ab8be0abc633185cf05202ea55b2fcafd61442ce60481eaba5ab6d9f98",
+      "functions": [],
+      "classes": [
+        {
+          "name": "EmbeddingServiceError",
+          "methods": [],
+          "properties": [],
+          "exported": true,
+          "lineCount": 2
+        },
+        {
+          "name": "EmbeddingService",
+          "methods": [
+            "__init__",
+            "embed"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 47
+        }
+      ],
+      "imports": [
+        {
+          "source": "logging",
+          "specifiers": [
+            "logging"
+          ]
+        },
+        {
+          "source": "openai",
+          "specifiers": [
+            "AsyncOpenAI",
+            "OpenAIError"
+          ]
+        },
+        {
+          "source": "settings",
+          "specifiers": [
+            "get_settings"
+          ]
+        }
+      ],
+      "exports": [
+        "EmbeddingServiceError",
+        "EmbeddingService"
+      ],
+      "totalLines": 63,
+      "hasStructuralAnalysis": true
+    },
+    "server/services/morpheme_service.py": {
+      "filePath": "server/services/morpheme_service.py",
+      "contentHash": "a3249a7a175ac7d57d11baefa43402c07a1ef41f5a57ae9389071d8fc989bebf",
+      "functions": [],
+      "classes": [
+        {
+          "name": "MorphemeService",
+          "methods": [
+            "__init__",
+            "tokenize"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 50
+        }
+      ],
+      "imports": [
+        {
+          "source": "logging",
+          "specifiers": [
+            "logging"
+          ]
+        }
+      ],
+      "exports": [
+        "MorphemeService"
+      ],
+      "totalLines": 69,
+      "hasStructuralAnalysis": true
+    },
+    "server/services/rag_query_service.py": {
+      "filePath": "server/services/rag_query_service.py",
+      "contentHash": "90008b34819b345e09ec7f437d282803f1f5b819bbe87070fc43974490f975e7",
+      "functions": [],
+      "classes": [
+        {
+          "name": "RagQueryService",
+          "methods": [
+            "__init__",
+            "search",
+            "_extract_unique_parent_ids",
+            "_sort_by_search_order"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 103
+        }
+      ],
+      "imports": [
+        {
+          "source": "uuid",
+          "specifiers": [
+            "UUID"
+          ]
+        },
+        {
+          "source": "repositories.rag_repository",
+          "specifiers": [
+            "RagRepository"
+          ]
+        },
+        {
+          "source": "schemas.rag",
+          "specifiers": [
+            "ParentChunkResult",
+            "SearchChunkHit"
+          ]
+        },
+        {
+          "source": "services.embedding_service",
+          "specifiers": [
+            "EmbeddingService"
+          ]
+        },
+        {
+          "source": "services.morpheme_service",
+          "specifiers": [
+            "MorphemeService"
+          ]
+        }
+      ],
+      "exports": [
+        "RagQueryService"
+      ],
+      "totalLines": 117,
+      "hasStructuralAnalysis": true
+    },
+    "server/services/rag_response_service.py": {
+      "filePath": "server/services/rag_response_service.py",
+      "contentHash": "94f9b96885dd490020504974ebc7113d32da39cf46279616bc2dd89a9da09ed1",
+      "functions": [],
+      "classes": [
+        {
+          "name": "RagResponseService",
+          "methods": [
+            "__init__",
+            "generate",
+            "_build_context"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 107
+        }
+      ],
+      "imports": [
+        {
+          "source": "fastapi",
+          "specifiers": [
+            "HTTPException",
+            "status"
+          ]
+        },
+        {
+          "source": "openai",
+          "specifiers": [
+            "APIError",
+            "AsyncOpenAI"
+          ]
+        },
+        {
+          "source": "schemas.rag",
+          "specifiers": [
+            "ParentChunkResult"
+          ]
+        },
+        {
+          "source": "settings",
+          "specifiers": [
+            "get_settings"
+          ]
+        }
+      ],
+      "exports": [
+        "RagResponseService"
+      ],
+      "totalLines": 132,
+      "hasStructuralAnalysis": true
+    },
+    "server/services/search_chunk_builder.py": {
+      "filePath": "server/services/search_chunk_builder.py",
+      "contentHash": "4f7971e002a4541079a090b33309b06d9da8e62a2a12e3b6226320f3e5fe9a9c",
+      "functions": [],
+      "classes": [
+        {
+          "name": "SearchChunkBuilder",
+          "methods": [
+            "__init__",
+            "build",
+            "_build_children_for_chunk",
+            "_get_segments_in_range",
+            "_to_search_chunk",
+            "_join_text"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 132
+        }
+      ],
+      "imports": [
+        {
+          "source": "schemas.rag",
+          "specifiers": [
+            "ChunkRow",
+            "SearchChunkCreate",
+            "SegmentCreate"
+          ]
+        },
+        {
+          "source": "typing",
+          "specifiers": [
+            "TYPE_CHECKING"
+          ]
+        }
+      ],
+      "exports": [
+        "SearchChunkBuilder"
+      ],
+      "totalLines": 148,
+      "hasStructuralAnalysis": true
+    },
+    "server/services/summary_service.py": {
+      "filePath": "server/services/summary_service.py",
+      "contentHash": "b7cdaf43053217cd1f6844cd9d16713ac3e73843d7d47f41b21183e77a833b26",
+      "functions": [],
+      "classes": [
+        {
+          "name": "SummaryService",
+          "methods": [
+            "__init__",
+            "summarize",
+            "_summarize_chunks",
+            "_summarize_chunk",
+            "_create_summary",
+            "_split_text"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 155
+        }
+      ],
+      "imports": [
+        {
+          "source": "asyncio",
+          "specifiers": [
+            "asyncio"
+          ]
+        },
+        {
+          "source": "fastapi",
+          "specifiers": [
+            "HTTPException",
+            "status"
+          ]
+        },
+        {
+          "source": "openai",
+          "specifiers": [
+            "APIError",
+            "AsyncOpenAI"
+          ]
+        },
+        {
+          "source": "settings",
+          "specifiers": [
+            "get_settings"
+          ]
+        }
+      ],
+      "exports": [
+        "SummaryService"
+      ],
+      "totalLines": 171,
+      "hasStructuralAnalysis": true
+    },
+    "server/services/transcript_ingestion_service.py": {
+      "filePath": "server/services/transcript_ingestion_service.py",
+      "contentHash": "5e4156bb676facb90c31a6311a08c0e529a97efa6190037a1b186a9717349a44",
+      "functions": [],
+      "classes": [
+        {
+          "name": "TranscriptIngestionResult",
+          "methods": [],
+          "properties": [
+            "transcript_id",
+            "transcript",
+            "duration_seconds",
+            "stt_model",
+            "segment_count",
+            "chunk_count"
+          ],
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "TranscriptIngestionService",
+          "methods": [
+            "__init__",
+            "ingest_upload",
+            "_build_chunks",
+            "_enrich_chunks",
+            "_build_and_index_search_chunks",
+            "_source_audio_uri",
+            "_to_segment_creates"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 232
+        }
+      ],
+      "imports": [
+        {
+          "source": "logging",
+          "specifiers": [
+            "logging"
+          ]
+        },
+        {
+          "source": "dataclasses",
+          "specifiers": [
+            "dataclass"
+          ]
+        },
+        {
+          "source": "uuid",
+          "specifiers": [
+            "UUID"
+          ]
+        },
+        {
+          "source": "fastapi",
+          "specifiers": [
+            "HTTPException",
+            "UploadFile"
+          ]
+        },
+        {
+          "source": "repositories.rag_repository",
+          "specifiers": [
+            "RagRepository"
+          ]
+        },
+        {
+          "source": "schemas.rag",
+          "specifiers": [
+            "ChunkCreate",
+            "DomainType",
+            "SearchChunkCreate",
+            "SegmentCreate",
+            "TranscriptCreate",
+            "TranscriptResultUpdate"
+          ]
+        },
+        {
+          "source": "services.chunk_builder",
+          "specifiers": [
+            "ContextPlannedChunkBuilder",
+            "DeterministicFallbackChunkBuilder"
+          ]
+        },
+        {
+          "source": "services.context_chunk_planning_service",
+          "specifiers": [
+            "ContextChunkPlanningService"
+          ]
+        },
+        {
+          "source": "services.chunk_metadata_service",
+          "specifiers": [
+            "ChunkMetadataService"
+          ]
+        },
+        {
+          "source": "services.embedding_service",
+          "specifiers": [
+            "EmbeddingService"
+          ]
+        },
+        {
+          "source": "services.morpheme_service",
+          "specifiers": [
+            "MorphemeService"
+          ]
+        },
+        {
+          "source": "services.search_chunk_builder",
+          "specifiers": [
+            "SearchChunkBuilder"
+          ]
+        },
+        {
+          "source": "services.transcription_service",
+          "specifiers": [
+            "TranscriptionService",
+            "TranscriptionSegment"
+          ]
+        }
+      ],
+      "exports": [
+        "TranscriptIngestionResult",
+        "TranscriptIngestionService"
+      ],
+      "totalLines": 272,
+      "hasStructuralAnalysis": true
+    },
+    "server/services/transcription_service.py": {
+      "filePath": "server/services/transcription_service.py",
+      "contentHash": "979a68e425f03c0c9fac4bd91ba8738d60a04c17f6bdc23458fd8fc163197b39",
+      "functions": [],
+      "classes": [
+        {
+          "name": "TranscriptionSegment",
+          "methods": [],
+          "properties": [
+            "text",
+            "start_seconds",
+            "end_seconds"
+          ],
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "TranscriptionResult",
+          "methods": [],
+          "properties": [
+            "text",
+            "duration_seconds",
+            "stt_model",
+            "segments"
+          ],
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "ChunkTranscription",
+          "methods": [],
+          "properties": [
+            "index",
+            "text",
+            "leading_overlap_seconds",
+            "start_seconds",
+            "duration_seconds",
+            "segments"
+          ],
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "TranscriptionService",
+          "methods": [
+            "__init__",
+            "transcribe",
+            "transcribe_with_segments",
+            "_transcribe_chunks",
+            "_collect_chunk_transcriptions",
+            "_transcribe_chunk_with_retry",
+            "_request_chunk_transcription",
+            "_parse_chunk_transcription",
+            "_merge_chunk_transcriptions",
+            "_merge_transcription_segments",
+            "_merge_segments",
+            "_get_response_value",
+            "_offset_seconds",
+            "_to_float_or_none",
+            "_save_upload"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 259
+        }
+      ],
+      "imports": [
+        {
+          "source": "asyncio",
+          "specifiers": [
+            "asyncio"
+          ]
+        },
+        {
+          "source": "tempfile",
+          "specifiers": [
+            "tempfile"
+          ]
+        },
+        {
+          "source": "dataclasses",
+          "specifiers": [
+            "dataclass"
+          ]
+        },
+        {
+          "source": "pathlib",
+          "specifiers": [
+            "Path"
+          ]
+        },
+        {
+          "source": "typing",
+          "specifiers": [
+            "Any"
+          ]
+        },
+        {
+          "source": "fastapi",
+          "specifiers": [
+            "HTTPException",
+            "UploadFile",
+            "status"
+          ]
+        },
+        {
+          "source": "openai",
+          "specifiers": [
+            "APIError",
+            "AsyncOpenAI"
+          ]
+        },
+        {
+          "source": "services.audio_analysis_service",
+          "specifiers": [
+            "AudioAnalysisService"
+          ]
+        },
+        {
+          "source": "services.audio_chunking",
+          "specifiers": [
+            "AudioChunk",
+            "AudioChunkingService",
+            "build_chunk_plan",
+            "calculate_chunk_seconds"
+          ]
+        },
+        {
+          "source": "settings",
+          "specifiers": [
+            "get_settings"
+          ]
+        }
+      ],
+      "exports": [
+        "TranscriptionSegment",
+        "TranscriptionResult",
+        "ChunkTranscription",
+        "TranscriptionService"
+      ],
+      "totalLines": 304,
+      "hasStructuralAnalysis": true
+    },
+    "server/settings.py": {
+      "filePath": "server/settings.py",
+      "contentHash": "c39d62e49d969818eea8adbf283cb076da3992e95bbf8207baf6467b705cb6fb",
+      "functions": [
+        {
+          "name": "get_settings",
+          "params": [],
+          "returnType": "Settings",
+          "exported": true,
+          "lineCount": 2
+        }
+      ],
+      "classes": [
+        {
+          "name": "Settings",
+          "methods": [
+            "allowed_origins"
+          ],
+          "properties": [
+            "database_url",
+            "openai_api_key",
+            "openai_stt_model",
+            "openai_summary_model",
+            "openai_embedding_model",
+            "audio_transcription_concurrency",
+            "audio_chunk_min_seconds",
+            "audio_chunk_max_seconds",
+            "audio_chunk_overlap_seconds",
+            "audio_target_chunk_max_mb",
+            "audio_sync_timeout_budget_seconds",
+            "summary_text_chunk_chars",
+            "summary_concurrency",
+            "allowed_origins_raw",
+            "jwt_secret_key",
+            "jwt_algorithm",
+            "jwt_access_token_expire_minutes",
+            "jwt_refresh_token_expire_days"
+          ],
+          "exported": true,
+          "lineCount": 48
+        }
+      ],
+      "imports": [
+        {
+          "source": "functools",
+          "specifiers": [
+            "lru_cache"
+          ]
+        },
+        {
+          "source": "pydantic",
+          "specifiers": [
+            "Field"
+          ]
+        },
+        {
+          "source": "pydantic_settings",
+          "specifiers": [
+            "BaseSettings",
+            "SettingsConfigDict"
+          ]
+        }
+      ],
+      "exports": [
+        "Settings",
+        "get_settings"
+      ],
+      "totalLines": 60,
+      "hasStructuralAnalysis": true
+    },
+    "server/tests/test_audio_analysis_service.py": {
+      "filePath": "server/tests/test_audio_analysis_service.py",
+      "contentHash": "b60c9498336d232d53f336349408370e0b8d24373b10e174facd4edcc01543a4",
+      "functions": [
+        {
+          "name": "test_parse_duration_seconds",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 8
+        },
+        {
+          "name": "test_analyze_rejects_empty_file",
+          "params": [
+            "tmp_path"
+          ],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 10
+        },
+        {
+          "name": "test_analyze_rejects_undecodable_file",
+          "params": [
+            "monkeypatch",
+            "tmp_path"
+          ],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 15
+        },
+        {
+          "name": "test_analyze_returns_duration",
+          "params": [
+            "monkeypatch",
+            "tmp_path"
+          ],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 18
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "subprocess",
+          "specifiers": [
+            "subprocess"
+          ]
+        },
+        {
+          "source": "pytest",
+          "specifiers": [
+            "pytest"
+          ]
+        },
+        {
+          "source": "fastapi",
+          "specifiers": [
+            "HTTPException"
+          ]
+        },
+        {
+          "source": "services.audio_analysis_service",
+          "specifiers": [
+            "AudioAnalysisService"
+          ]
+        }
+      ],
+      "exports": [
+        "test_parse_duration_seconds",
+        "test_analyze_rejects_empty_file",
+        "test_analyze_rejects_undecodable_file",
+        "test_analyze_returns_duration"
+      ],
+      "totalLines": 66,
+      "hasStructuralAnalysis": true
+    },
+    "server/tests/test_audio_chunking.py": {
+      "filePath": "server/tests/test_audio_chunking.py",
+      "contentHash": "5d909a4197d607b715283cb13d7b4e615d561991c19700aa178fc21ff893c95e",
+      "functions": [
+        {
+          "name": "test_calculate_chunk_seconds_clamps_by_duration",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "test_calculate_chunk_seconds_rejects_invalid_settings",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "test_build_chunk_plan_adds_overlap_without_extending_past_duration",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 9
+        },
+        {
+          "name": "test_create_chunks_uses_mono_16khz_mp3_settings",
+          "params": [
+            "monkeypatch",
+            "tmp_path"
+          ],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 31
+        },
+        {
+          "name": "test_create_chunks_raises_when_size_limit_cannot_be_met",
+          "params": [
+            "monkeypatch",
+            "tmp_path"
+          ],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 24
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "subprocess",
+          "specifiers": [
+            "subprocess"
+          ]
+        },
+        {
+          "source": "pytest",
+          "specifiers": [
+            "pytest"
+          ]
+        },
+        {
+          "source": "fastapi",
+          "specifiers": [
+            "HTTPException"
+          ]
+        },
+        {
+          "source": "services.audio_chunking",
+          "specifiers": [
+            "AudioChunkingService",
+            "build_chunk_plan",
+            "calculate_chunk_seconds"
+          ]
+        }
+      ],
+      "exports": [
+        "test_calculate_chunk_seconds_clamps_by_duration",
+        "test_calculate_chunk_seconds_rejects_invalid_settings",
+        "test_build_chunk_plan_adds_overlap_without_extending_past_duration",
+        "test_create_chunks_uses_mono_16khz_mp3_settings",
+        "test_create_chunks_raises_when_size_limit_cannot_be_met"
+      ],
+      "totalLines": 95,
+      "hasStructuralAnalysis": true
+    },
+    "server/tests/test_audio_routes.py": {
+      "filePath": "server/tests/test_audio_routes.py",
+      "contentHash": "058a2b7258c6372d3ace01a3709ab8e43d1c994fdf928b87ddc44d783fcdf71c",
+      "functions": [
+        {
+          "name": "test_health_returns_ok",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "test_audio_summarize_rejects_missing_file",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "test_audio_summarize_rejects_unsupported_extension",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 8
+        },
+        {
+          "name": "test_audio_summarize_returns_transcript_and_summary",
+          "params": [
+            "monkeypatch"
+          ],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 22
+        },
+        {
+          "name": "test_audio_summarize_rejects_empty_transcript",
+          "params": [
+            "monkeypatch"
+          ],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 19
+        },
+        {
+          "name": "test_audio_transcripts_persists_stt_flow",
+          "params": [
+            "monkeypatch"
+          ],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 53
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "uuid",
+          "specifiers": [
+            "UUID"
+          ]
+        },
+        {
+          "source": "fastapi.testclient",
+          "specifiers": [
+            "TestClient"
+          ]
+        },
+        {
+          "source": "dependencies.auth",
+          "specifiers": [
+            "get_current_user"
+          ]
+        },
+        {
+          "source": "main",
+          "specifiers": [
+            "app"
+          ]
+        },
+        {
+          "source": "routes",
+          "specifiers": [
+            "audio"
+          ]
+        },
+        {
+          "source": "schemas.auth",
+          "specifiers": [
+            "CurrentUser"
+          ]
+        }
+      ],
+      "exports": [
+        "test_health_returns_ok",
+        "test_audio_summarize_rejects_missing_file",
+        "test_audio_summarize_rejects_unsupported_extension",
+        "test_audio_summarize_returns_transcript_and_summary",
+        "test_audio_summarize_rejects_empty_transcript",
+        "test_audio_transcripts_persists_stt_flow"
+      ],
+      "totalLines": 135,
+      "hasStructuralAnalysis": true
+    },
+    "server/tests/test_auth_service.py": {
+      "filePath": "server/tests/test_auth_service.py",
+      "contentHash": "32d4bf2bc5a592faa09eca85400abc2040581d636429456810f5803b42227f82",
+      "functions": [
+        {
+          "name": "make_service",
+          "params": [],
+          "returnType": "AuthService",
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "test_register_returns_uuid",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "test_register_duplicate_email_raises_409",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 9
+        },
+        {
+          "name": "test_login_returns_token_response",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 10
+        },
+        {
+          "name": "test_login_wrong_email_raises_401",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 8
+        },
+        {
+          "name": "test_login_wrong_password_raises_401",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 9
+        },
+        {
+          "name": "test_decode_access_token_returns_current_user",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 10
+        },
+        {
+          "name": "test_decode_access_token_with_refresh_token_raises_401",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 33
+        },
+        {
+          "name": "_patch_secret",
+          "params": [
+            "service",
+            "secret",
+            "token"
+          ],
+          "exported": true,
+          "lineCount": 11
+        },
+        {
+          "name": "test_decode_access_token_invalid_token_raises_401",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 15
+        }
+      ],
+      "classes": [
+        {
+          "name": "FakeAuthRepository",
+          "methods": [
+            "__init__",
+            "create_user",
+            "get_user_by_email"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 22
+        }
+      ],
+      "imports": [
+        {
+          "source": "uuid",
+          "specifiers": [
+            "UUID",
+            "uuid4"
+          ]
+        },
+        {
+          "source": "pytest",
+          "specifiers": [
+            "pytest"
+          ]
+        },
+        {
+          "source": "fastapi",
+          "specifiers": [
+            "HTTPException"
+          ]
+        },
+        {
+          "source": "services.auth_service",
+          "specifiers": [
+            "AuthService"
+          ]
+        }
+      ],
+      "exports": [
+        "FakeAuthRepository",
+        "make_service",
+        "test_register_returns_uuid",
+        "test_register_duplicate_email_raises_409",
+        "test_login_returns_token_response",
+        "test_login_wrong_email_raises_401",
+        "test_login_wrong_password_raises_401",
+        "test_decode_access_token_returns_current_user",
+        "test_decode_access_token_with_refresh_token_raises_401",
+        "_patch_secret",
+        "test_decode_access_token_invalid_token_raises_401"
+      ],
+      "totalLines": 187,
+      "hasStructuralAnalysis": true
+    },
+    "server/tests/test_chunk_builder.py": {
+      "filePath": "server/tests/test_chunk_builder.py",
+      "contentHash": "ccc1b34768652e9c9102a6f5f5b9d42e891da847a908e1bd22ac7a40dc4f302d",
+      "functions": [
+        {
+          "name": "make_segment",
+          "params": [
+            "index",
+            "text",
+            "speaker_label"
+          ],
+          "returnType": "SegmentCreate",
+          "exported": true,
+          "lineCount": 12
+        },
+        {
+          "name": "test_meeting_chunk_builder_splits_on_speaker_turns",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 20
+        },
+        {
+          "name": "test_lecture_chunk_builder_uses_larger_context_with_overlap",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 22
+        },
+        {
+          "name": "test_context_planned_chunk_builder_preserves_llm_plan_range_and_metadata",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 34
+        },
+        {
+          "name": "test_context_planned_chunk_builder_preserves_fallback_planning_error",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 24
+        },
+        {
+          "name": "test_deterministic_fallback_chunk_builder_uses_safety_time_ranges",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 38
+        },
+        {
+          "name": "test_get_chunk_builder_selects_domain_strategy",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 3
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "schemas.rag",
+          "specifiers": [
+            "SegmentCreate"
+          ]
+        },
+        {
+          "source": "services.chunk_builder",
+          "specifiers": [
+            "ContextPlannedChunkBuilder",
+            "DeterministicFallbackChunkBuilder",
+            "LectureChunkBuilder",
+            "MeetingChunkBuilder",
+            "get_chunk_builder"
+          ]
+        },
+        {
+          "source": "services.context_chunk_planning_service",
+          "specifiers": [
+            "ContextChunkPlanGroup"
+          ]
+        }
+      ],
+      "exports": [
+        "make_segment",
+        "test_meeting_chunk_builder_splits_on_speaker_turns",
+        "test_lecture_chunk_builder_uses_larger_context_with_overlap",
+        "test_context_planned_chunk_builder_preserves_llm_plan_range_and_metadata",
+        "test_context_planned_chunk_builder_preserves_fallback_planning_error",
+        "test_deterministic_fallback_chunk_builder_uses_safety_time_ranges",
+        "test_get_chunk_builder_selects_domain_strategy"
+      ],
+      "totalLines": 177,
+      "hasStructuralAnalysis": true
+    },
+    "server/tests/test_chunk_metadata_service.py": {
+      "filePath": "server/tests/test_chunk_metadata_service.py",
+      "contentHash": "9dc31e0bc1079d205dbeb18f33b2f0cbae78b5680e86cb3606391eb1c67a586a",
+      "functions": [
+        {
+          "name": "make_service",
+          "params": [
+            "responses",
+            "concurrency"
+          ],
+          "returnType": "ChunkMetadataService",
+          "exported": true,
+          "lineCount": 8
+        },
+        {
+          "name": "make_chunk",
+          "params": [
+            "domain_type",
+            "chunk_index",
+            "metadata"
+          ],
+          "returnType": "ChunkCreate",
+          "exported": true,
+          "lineCount": 18
+        },
+        {
+          "name": "test_chunk_metadata_prompt_targets_summary_context_metadata",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "test_enrich_meeting_chunk_adds_topic_keywords_summary_and_items",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 30
+        },
+        {
+          "name": "test_enrich_lecture_chunk_adds_concepts_and_learning_points",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 37
+        },
+        {
+          "name": "test_enrich_chunk_returns_original_when_provider_or_json_fails",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "test_enrich_chunks_preserves_input_order",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 15
+        }
+      ],
+      "classes": [
+        {
+          "name": "FakeCompletions",
+          "methods": [
+            "__init__",
+            "create"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 17
+        }
+      ],
+      "imports": [
+        {
+          "source": "types",
+          "specifiers": [
+            "SimpleNamespace"
+          ]
+        },
+        {
+          "source": "pytest",
+          "specifiers": [
+            "pytest"
+          ]
+        },
+        {
+          "source": "schemas.rag",
+          "specifiers": [
+            "ChunkCreate"
+          ]
+        },
+        {
+          "source": "services.chunk_metadata_service",
+          "specifiers": [
+            "ChunkMetadataService"
+          ]
+        }
+      ],
+      "exports": [
+        "FakeCompletions",
+        "make_service",
+        "make_chunk",
+        "test_chunk_metadata_prompt_targets_summary_context_metadata",
+        "test_enrich_meeting_chunk_adds_topic_keywords_summary_and_items",
+        "test_enrich_lecture_chunk_adds_concepts_and_learning_points",
+        "test_enrich_chunk_returns_original_when_provider_or_json_fails",
+        "test_enrich_chunks_preserves_input_order"
+      ],
+      "totalLines": 166,
+      "hasStructuralAnalysis": true
+    },
+    "server/tests/test_context_chunk_planning_service.py": {
+      "filePath": "server/tests/test_context_chunk_planning_service.py",
+      "contentHash": "7094ccbd455fdbe6318c9de54edd65b72389eebab6bb468603cdc3890ce5e3c9",
+      "functions": [
+        {
+          "name": "make_segment",
+          "params": [
+            "index",
+            "text"
+          ],
+          "returnType": "SegmentCreate",
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "make_service",
+          "params": [
+            "response"
+          ],
+          "returnType": "ContextChunkPlanningService",
+          "exported": true,
+          "lineCount": 12
+        },
+        {
+          "name": "test_context_chunk_planner_prompt_contains_domain_and_common_rules",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 11
+        },
+        {
+          "name": "test_context_chunk_planner_parses_meeting_groups",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 38
+        },
+        {
+          "name": "test_context_chunk_planner_parses_lecture_groups",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 30
+        },
+        {
+          "name": "test_context_chunk_planner_falls_back_when_json_is_invalid",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 16
+        },
+        {
+          "name": "test_context_chunk_planner_falls_back_when_range_is_invalid",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 28
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "pytest",
+          "specifiers": [
+            "pytest"
+          ]
+        },
+        {
+          "source": "schemas.rag",
+          "specifiers": [
+            "SegmentCreate"
+          ]
+        },
+        {
+          "source": "services.context_chunk_planning_service",
+          "specifiers": [
+            "ContextChunkPlanGroup",
+            "ContextChunkPlanningService"
+          ]
+        }
+      ],
+      "exports": [
+        "make_segment",
+        "make_service",
+        "test_context_chunk_planner_prompt_contains_domain_and_common_rules",
+        "test_context_chunk_planner_parses_meeting_groups",
+        "test_context_chunk_planner_parses_lecture_groups",
+        "test_context_chunk_planner_falls_back_when_json_is_invalid",
+        "test_context_chunk_planner_falls_back_when_range_is_invalid"
+      ],
+      "totalLines": 168,
+      "hasStructuralAnalysis": true
+    },
+    "server/tests/test_embedding_service.py": {
+      "filePath": "server/tests/test_embedding_service.py",
+      "contentHash": "efca0b2db02b4d9540c2c88f83b9d99db32215a84aa4606d37c33ebe5e0baa96",
+      "functions": [
+        {
+          "name": "_make_embedding_response",
+          "params": [
+            "vectors"
+          ],
+          "returnType": "SimpleNamespace",
+          "exported": true,
+          "lineCount": 8
+        },
+        {
+          "name": "_make_service",
+          "params": [
+            "model"
+          ],
+          "returnType": "tuple[EmbeddingService, AsyncMock]",
+          "exported": true,
+          "lineCount": 14
+        },
+        {
+          "name": "test_embed_single_text_returns_vector",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 10
+        },
+        {
+          "name": "test_embed_batch_texts_returns_multiple_vectors",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 16
+        },
+        {
+          "name": "test_embed_handles_openai_api_error_gracefully",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "test_embed_uses_configured_model",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 11
+        },
+        {
+          "name": "test_embed_empty_input_returns_empty_list_without_api_call",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 8
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "types",
+          "specifiers": [
+            "SimpleNamespace"
+          ]
+        },
+        {
+          "source": "unittest.mock",
+          "specifiers": [
+            "AsyncMock",
+            "MagicMock",
+            "patch"
+          ]
+        },
+        {
+          "source": "pytest",
+          "specifiers": [
+            "pytest"
+          ]
+        },
+        {
+          "source": "openai",
+          "specifiers": [
+            "OpenAIError"
+          ]
+        },
+        {
+          "source": "services.embedding_service",
+          "specifiers": [
+            "EmbeddingService",
+            "EmbeddingServiceError"
+          ]
+        }
+      ],
+      "exports": [
+        "_make_embedding_response",
+        "_make_service",
+        "test_embed_single_text_returns_vector",
+        "test_embed_batch_texts_returns_multiple_vectors",
+        "test_embed_handles_openai_api_error_gracefully",
+        "test_embed_uses_configured_model",
+        "test_embed_empty_input_returns_empty_list_without_api_call"
+      ],
+      "totalLines": 107,
+      "hasStructuralAnalysis": true
+    },
+    "server/tests/test_rag_persistence.py": {
+      "filePath": "server/tests/test_rag_persistence.py",
+      "contentHash": "af5d11b6de03e6740e929639dc3492b3f53a1968708f07f8e9b265435f84405c",
+      "functions": [
+        {
+          "name": "test_settings_reads_database_url",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "test_rag_migration_defines_step1_tables_and_indexes",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 10
+        },
+        {
+          "name": "test_pydantic_models_validate_domain_and_ranges",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 21
+        },
+        {
+          "name": "test_chunk_model_normalizes_blank_metadata_lists",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 12
+        },
+        {
+          "name": "test_get_connection_connects_and_acquires_pool",
+          "params": [
+            "monkeypatch"
+          ],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 13
+        },
+        {
+          "name": "test_repository_creates_transcript_and_updates_result",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 30
+        },
+        {
+          "name": "test_repository_inserts_segments_and_chunks",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 49
+        },
+        {
+          "name": "test_insert_search_chunks_creates_rows",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 60
+        },
+        {
+          "name": "test_insert_search_chunks_empty_list_does_nothing",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 9
+        },
+        {
+          "name": "test_insert_search_chunks_uses_vector_literal",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 24
+        },
+        {
+          "name": "test_insert_search_chunks_uses_json_metadata",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 24
+        },
+        {
+          "name": "_make_search_chunk_row",
+          "params": [
+            "chunk_id",
+            "transcript_id",
+            "parent_chunk_id",
+            "score_field",
+            "field_name"
+          ],
+          "returnType": "dict",
+          "exported": true,
+          "lineCount": 19
+        },
+        {
+          "name": "test_search_chunks_hybrid_merges_keyword_and_vector_scores",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 30
+        },
+        {
+          "name": "test_search_chunks_hybrid_keyword_only_hit",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 24
+        },
+        {
+          "name": "test_search_chunks_hybrid_vector_only_hit",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 37
+        },
+        {
+          "name": "test_search_chunks_hybrid_returns_top_k",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 32
+        },
+        {
+          "name": "test_search_by_keyword_builds_correct_sql",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 21
+        },
+        {
+          "name": "test_search_by_keyword_adds_transcript_filter",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 18
+        },
+        {
+          "name": "test_search_by_keyword_adds_user_id_join",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 18
+        },
+        {
+          "name": "test_search_by_vector_builds_correct_sql",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 20
+        },
+        {
+          "name": "test_search_by_vector_score_is_one_minus_distance",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 31
+        },
+        {
+          "name": "test_get_parent_chunks_empty_ids_returns_empty",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 9
+        },
+        {
+          "name": "test_get_parent_chunks_queries_chunks_table",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 43
+        },
+        {
+          "name": "test_get_parent_chunks_handles_null_optional_fields",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 35
+        }
+      ],
+      "classes": [
+        {
+          "name": "FakeConnection",
+          "methods": [
+            "__init__",
+            "fetchrow",
+            "execute",
+            "executemany",
+            "fetch"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 24
+        },
+        {
+          "name": "FakeAcquireContext",
+          "methods": [
+            "__init__",
+            "__aenter__",
+            "__aexit__"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 12
+        },
+        {
+          "name": "FakePool",
+          "methods": [
+            "__init__",
+            "acquire"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "FakeDatabase",
+          "methods": [
+            "__init__",
+            "connect"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 7
+        }
+      ],
+      "imports": [
+        {
+          "source": "pathlib",
+          "specifiers": [
+            "Path"
+          ]
+        },
+        {
+          "source": "uuid",
+          "specifiers": [
+            "UUID",
+            "uuid4"
+          ]
+        },
+        {
+          "source": "pytest",
+          "specifiers": [
+            "pytest"
+          ]
+        },
+        {
+          "source": "pydantic",
+          "specifiers": [
+            "ValidationError"
+          ]
+        },
+        {
+          "source": "db",
+          "specifiers": [
+            "db_connection"
+          ]
+        },
+        {
+          "source": "repositories.rag_repository",
+          "specifiers": [
+            "RagRepository"
+          ]
+        },
+        {
+          "source": "schemas.rag",
+          "specifiers": [
+            "ChunkCreate",
+            "SearchChunkCreate",
+            "SegmentCreate",
+            "TranscriptCreate",
+            "TranscriptResultUpdate"
+          ]
+        },
+        {
+          "source": "settings",
+          "specifiers": [
+            "Settings"
+          ]
+        }
+      ],
+      "exports": [
+        "FakeConnection",
+        "FakeAcquireContext",
+        "FakePool",
+        "FakeDatabase",
+        "test_settings_reads_database_url",
+        "test_rag_migration_defines_step1_tables_and_indexes",
+        "test_pydantic_models_validate_domain_and_ranges",
+        "test_chunk_model_normalizes_blank_metadata_lists",
+        "test_get_connection_connects_and_acquires_pool",
+        "test_repository_creates_transcript_and_updates_result",
+        "test_repository_inserts_segments_and_chunks",
+        "test_insert_search_chunks_creates_rows",
+        "test_insert_search_chunks_empty_list_does_nothing",
+        "test_insert_search_chunks_uses_vector_literal",
+        "test_insert_search_chunks_uses_json_metadata",
+        "_make_search_chunk_row",
+        "test_search_chunks_hybrid_merges_keyword_and_vector_scores",
+        "test_search_chunks_hybrid_keyword_only_hit",
+        "test_search_chunks_hybrid_vector_only_hit",
+        "test_search_chunks_hybrid_returns_top_k",
+        "test_search_by_keyword_builds_correct_sql",
+        "test_search_by_keyword_adds_transcript_filter",
+        "test_search_by_keyword_adds_user_id_join",
+        "test_search_by_vector_builds_correct_sql",
+        "test_search_by_vector_score_is_one_minus_distance",
+        "test_get_parent_chunks_empty_ids_returns_empty",
+        "test_get_parent_chunks_queries_chunks_table",
+        "test_get_parent_chunks_handles_null_optional_fields"
+      ],
+      "totalLines": 737,
+      "hasStructuralAnalysis": true
+    },
+    "server/tests/test_search_chunk_builder.py": {
+      "filePath": "server/tests/test_search_chunk_builder.py",
+      "contentHash": "0946f7b91e3fd1b8babdd611095f7787f66535c6cb9f8c0ff4fb06eda39d4c26",
+      "functions": [
+        {
+          "name": "make_segment",
+          "params": [
+            "index",
+            "text",
+            "start",
+            "end"
+          ],
+          "returnType": "SegmentCreate",
+          "exported": true,
+          "lineCount": 12
+        },
+        {
+          "name": "make_chunk_row",
+          "params": [
+            "chunk_index",
+            "seg_start",
+            "seg_end"
+          ],
+          "returnType": "ChunkRow",
+          "exported": true,
+          "lineCount": 11
+        },
+        {
+          "name": "test_adaptive_grouping_stays_within_parent_range",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 15
+        },
+        {
+          "name": "test_short_segments_grouped_into_2_to_3",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 16
+        },
+        {
+          "name": "test_long_segment_becomes_standalone_child",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 19
+        },
+        {
+          "name": "test_max_chars_and_seconds_not_exceeded",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 19
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "uuid",
+          "specifiers": [
+            "uuid4"
+          ]
+        },
+        {
+          "source": "schemas.rag",
+          "specifiers": [
+            "ChunkRow",
+            "SearchChunkCreate",
+            "SegmentCreate"
+          ]
+        },
+        {
+          "source": "services.search_chunk_builder",
+          "specifiers": [
+            "SearchChunkBuilder"
+          ]
+        }
+      ],
+      "exports": [
+        "make_segment",
+        "make_chunk_row",
+        "test_adaptive_grouping_stays_within_parent_range",
+        "test_short_segments_grouped_into_2_to_3",
+        "test_long_segment_becomes_standalone_child",
+        "test_max_chars_and_seconds_not_exceeded"
+      ],
+      "totalLines": 113,
+      "hasStructuralAnalysis": true
+    },
+    "server/tests/test_summary_service.py": {
+      "filePath": "server/tests/test_summary_service.py",
+      "contentHash": "f1dcf0fdf0d36795d388ee0f2de70f5dd3c90f539290d1fb6f9fdbb01576684d",
+      "functions": [
+        {
+          "name": "make_response",
+          "params": [
+            "content"
+          ],
+          "exported": true,
+          "lineCount": 8
+        },
+        {
+          "name": "make_service",
+          "params": [
+            "handler",
+            "chunk_chars",
+            "concurrency"
+          ],
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "test_summarize_uses_single_summary_for_short_transcript",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 14
+        },
+        {
+          "name": "test_summarize_chunks_long_transcript_then_creates_final_summary",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 29
+        },
+        {
+          "name": "test_split_text_prefers_boundaries",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 6
+        }
+      ],
+      "classes": [
+        {
+          "name": "FakeCompletions",
+          "methods": [
+            "__init__",
+            "create"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "FakeChat",
+          "methods": [
+            "__init__"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "FakeClient",
+          "methods": [
+            "__init__"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 3
+        }
+      ],
+      "imports": [
+        {
+          "source": "asyncio",
+          "specifiers": [
+            "asyncio"
+          ]
+        },
+        {
+          "source": "types",
+          "specifiers": [
+            "SimpleNamespace"
+          ]
+        },
+        {
+          "source": "pytest",
+          "specifiers": [
+            "pytest"
+          ]
+        },
+        {
+          "source": "services.summary_service",
+          "specifiers": [
+            "SummaryService"
+          ]
+        }
+      ],
+      "exports": [
+        "FakeCompletions",
+        "FakeChat",
+        "FakeClient",
+        "make_response",
+        "make_service",
+        "test_summarize_uses_single_summary_for_short_transcript",
+        "test_summarize_chunks_long_transcript_then_creates_final_summary",
+        "test_split_text_prefers_boundaries"
+      ],
+      "totalLines": 101,
+      "hasStructuralAnalysis": true
+    },
+    "server/tests/test_transcript_ingestion_service.py": {
+      "filePath": "server/tests/test_transcript_ingestion_service.py",
+      "contentHash": "07c660faa846922360288851862f2efb6412d3029b6a1e35c2ded4b203692e10",
+      "functions": [
+        {
+          "name": "test_ingest_upload_persists_transcript_result_and_segments",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 42
+        },
+        {
+          "name": "test_ingest_upload_enriches_chunks_before_insert",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 29
+        },
+        {
+          "name": "test_ingest_upload_uses_original_chunks_when_metadata_enrichment_fails",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 25
+        },
+        {
+          "name": "test_ingest_upload_uses_llm_plan_to_insert_multiple_context_chunks",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 35
+        },
+        {
+          "name": "test_ingest_upload_uses_fallback_chunks_when_planner_fails",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 30
+        },
+        {
+          "name": "test_ingest_upload_marks_transcript_failed_when_stt_fails",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 15
+        },
+        {
+          "name": "_make_chunk_row",
+          "params": [
+            "segment_start",
+            "segment_end"
+          ],
+          "returnType": "ChunkRow",
+          "exported": true,
+          "lineCount": 12
+        },
+        {
+          "name": "test_ingest_creates_transcript_and_saves_chunks_and_search_chunks",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 46
+        },
+        {
+          "name": "test_ingest_continues_on_search_chunk_failure",
+          "params": [],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 35
+        }
+      ],
+      "classes": [
+        {
+          "name": "FakeRepository",
+          "methods": [
+            "__init__",
+            "create_transcript",
+            "update_transcript_result",
+            "insert_segments",
+            "insert_chunks",
+            "fetch_chunks_by_transcript",
+            "insert_search_chunks"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 29
+        },
+        {
+          "name": "FakeUploadFile",
+          "methods": [],
+          "properties": [],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "FakeTranscriptionService",
+          "methods": [
+            "__init__",
+            "transcribe_with_segments"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 9
+        },
+        {
+          "name": "FakeChunkMetadataService",
+          "methods": [
+            "__init__",
+            "enrich_chunks"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 20
+        },
+        {
+          "name": "FakeContextChunkPlanningService",
+          "methods": [
+            "__init__",
+            "plan_chunks"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 21
+        },
+        {
+          "name": "FakeSearchChunkBuilder",
+          "methods": [
+            "build"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 18
+        },
+        {
+          "name": "FakeEmbeddingService",
+          "methods": [
+            "__init__",
+            "embed"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 13
+        }
+      ],
+      "imports": [
+        {
+          "source": "uuid",
+          "specifiers": [
+            "UUID",
+            "uuid4"
+          ]
+        },
+        {
+          "source": "pytest",
+          "specifiers": [
+            "pytest"
+          ]
+        },
+        {
+          "source": "fastapi",
+          "specifiers": [
+            "HTTPException"
+          ]
+        },
+        {
+          "source": "schemas.rag",
+          "specifiers": [
+            "ChunkRow"
+          ]
+        },
+        {
+          "source": "services.context_chunk_planning_service",
+          "specifiers": [
+            "ContextChunkPlanGroup"
+          ]
+        },
+        {
+          "source": "services.transcript_ingestion_service",
+          "specifiers": [
+            "TranscriptIngestionService"
+          ]
+        },
+        {
+          "source": "services.transcription_service",
+          "specifiers": [
+            "TranscriptionResult",
+            "TranscriptionSegment"
+          ]
+        }
+      ],
+      "exports": [
+        "FakeRepository",
+        "FakeUploadFile",
+        "FakeTranscriptionService",
+        "FakeChunkMetadataService",
+        "FakeContextChunkPlanningService",
+        "test_ingest_upload_persists_transcript_result_and_segments",
+        "test_ingest_upload_enriches_chunks_before_insert",
+        "test_ingest_upload_uses_original_chunks_when_metadata_enrichment_fails",
+        "test_ingest_upload_uses_llm_plan_to_insert_multiple_context_chunks",
+        "test_ingest_upload_uses_fallback_chunks_when_planner_fails",
+        "test_ingest_upload_marks_transcript_failed_when_stt_fails",
+        "FakeSearchChunkBuilder",
+        "FakeEmbeddingService",
+        "_make_chunk_row",
+        "test_ingest_creates_transcript_and_saves_chunks_and_search_chunks",
+        "test_ingest_continues_on_search_chunk_failure"
+      ],
+      "totalLines": 436,
+      "hasStructuralAnalysis": true
+    },
+    "server/tests/test_transcription_service.py": {
+      "filePath": "server/tests/test_transcription_service.py",
+      "contentHash": "d0b410b06bce82be2c44d817793d9960f273e9a4b38bdd8b9c005713ecf24dc8",
+      "functions": [
+        {
+          "name": "make_service",
+          "params": [
+            "handler",
+            "concurrency"
+          ],
+          "returnType": "TranscriptionService",
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "write_chunk",
+          "params": [
+            "tmp_path",
+            "index"
+          ],
+          "returnType": "AudioChunk",
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "test_transcribe_chunks_limits_concurrency_and_keeps_chunk_order",
+          "params": [
+            "tmp_path"
+          ],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 21
+        },
+        {
+          "name": "test_transcribe_chunk_retries_once_before_success",
+          "params": [
+            "tmp_path"
+          ],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 17
+        },
+        {
+          "name": "test_transcribe_chunk_failure_returns_502_with_chunk_index",
+          "params": [
+            "tmp_path"
+          ],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 17
+        },
+        {
+          "name": "test_transcribe_chunks_uses_verbose_json_segments_to_skip_leading_overlap",
+          "params": [
+            "tmp_path"
+          ],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 32
+        }
+      ],
+      "classes": [
+        {
+          "name": "FakeTranscriptions",
+          "methods": [
+            "__init__",
+            "create"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "FakeAudio",
+          "methods": [
+            "__init__"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "FakeClient",
+          "methods": [
+            "__init__"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 3
+        }
+      ],
+      "imports": [
+        {
+          "source": "asyncio",
+          "specifiers": [
+            "asyncio"
+          ]
+        },
+        {
+          "source": "pathlib",
+          "specifiers": [
+            "Path"
+          ]
+        },
+        {
+          "source": "pytest",
+          "specifiers": [
+            "pytest"
+          ]
+        },
+        {
+          "source": "fastapi",
+          "specifiers": [
+            "HTTPException"
+          ]
+        },
+        {
+          "source": "services.audio_chunking",
+          "specifiers": [
+            "AudioChunk"
+          ]
+        },
+        {
+          "source": "services.transcription_service",
+          "specifiers": [
+            "TranscriptionService"
+          ]
+        }
+      ],
+      "exports": [
+        "FakeTranscriptions",
+        "FakeAudio",
+        "FakeClient",
+        "make_service",
+        "write_chunk",
+        "test_transcribe_chunks_limits_concurrency_and_keeps_chunk_order",
+        "test_transcribe_chunk_retries_once_before_success",
+        "test_transcribe_chunk_failure_returns_502_with_chunk_index",
+        "test_transcribe_chunks_uses_verbose_json_segments_to_skip_leading_overlap"
+      ],
+      "totalLines": 140,
+      "hasStructuralAnalysis": true
+    },
+    "VOICEDOC_PROJECT.md": {
+      "filePath": "VOICEDOC_PROJECT.md",
+      "contentHash": "651b53af57cd43fd408c9d32afab7ac20ece9b220834d5274c54f6b4c9eaba32",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 234,
+      "hasStructuralAnalysis": true
+    }
+  }
+}
