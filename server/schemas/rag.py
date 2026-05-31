@@ -123,6 +123,66 @@ class SearchChunkCreate(BaseModel):
     start_seconds: float | None = Field(default=None, ge=0)
     end_seconds: float | None = Field(default=None, ge=0)
     text: str = Field(min_length=1)
+    text_morphemes: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
     embedding_model: str | None = None
     embedding: list[float] | None = None
+
+
+# RAG 검색 결과 단일 히트를 나타내는 읽기 전용 모델.
+# keyword 점수와 vector 점수를 가중 합산한 최종 score를 포함한다.
+class SearchChunkHit(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    id: UUID
+    transcript_id: UUID
+    parent_chunk_id: UUID
+    child_index: int
+    start_seconds: float | None
+    end_seconds: float | None
+    text: str
+    # 가중 합산 점수: 0.6 * keyword_score + 0.4 * vector_score
+    score: float
+    embedding_model: str | None = None
+
+
+# RAG 검색 시 상위 청크(parent chunk)의 전체 문맥을 반환하는 모델.
+# 검색 히트된 child chunk의 parent를 조회하여 풍부한 메타데이터와 함께 응답한다.
+class ParentChunkResult(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    id: UUID
+    transcript_id: UUID
+    domain_type: str
+    chunk_index: int
+    topic: str | None
+    subtopic: str | None
+    keywords: list[str]
+    speaker_labels: list[str]
+    start_seconds: float | None
+    end_seconds: float | None
+    text: str
+    summary: str | None
+    metadata: dict[str, Any]
+
+
+# POST /rag/query 엔드포인트 요청 모델.
+# query는 자연어 검색 질의, transcript_id는 특정 트랜스크립트로 검색 범위 한정 시 사용.
+class RagQueryRequest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    query: str = Field(min_length=1)
+    transcript_id: UUID | None = None
+    # JWT 도입 전 임시 필드 — 추후 액세스 토큰에서 추출하는 방식으로 대체 예정
+    user_id: UUID | None = None
+    top_k: int = Field(default=5, ge=1, le=20)
+
+
+# POST /rag/query 엔드포인트 응답 모델.
+# LLM이 생성한 answer와 근거가 된 parent chunk 목록을 함께 반환한다.
+class RagQueryResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    answer: str
+    sources: list[ParentChunkResult]
+    chunks_retrieved: int

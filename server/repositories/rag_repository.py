@@ -1,9 +1,10 @@
+import asyncio
 import json
 from typing import Any
 from uuid import UUID, uuid4
 
 from db.connection import DatabaseConnection
-from schemas.rag import ChunkCreate, ChunkRow, SearchChunkCreate, SegmentCreate, TranscriptCreate, TranscriptResultUpdate
+from schemas.rag import ChunkCreate, ChunkRow, ParentChunkResult, SearchChunkCreate, SearchChunkHit, SegmentCreate, TranscriptCreate, TranscriptResultUpdate
 
 
 class RagRepository:
@@ -218,20 +219,22 @@ class RagRepository:
             return
 
         # 2. search_chunks를 일괄 upsert — parent_chunk_id + child_index 충돌 시 전체 필드 갱신
+        # text_morphemes($10): 형태소 분석 결과 텍스트, NULL 허용 (FTS에서 coalesce로 text fallback)
         await self._connection.executemany(
             """
             INSERT INTO search_chunks (
               id, transcript_id, parent_chunk_id, child_index,
               segment_start_index, segment_end_index, start_seconds, end_seconds,
-              text, embedding_model, embedding, metadata
+              text, text_morphemes, embedding_model, embedding, metadata
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::vector, $12::jsonb)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::vector, $13::jsonb)
             ON CONFLICT (parent_chunk_id, child_index) DO UPDATE
             SET segment_start_index = EXCLUDED.segment_start_index,
                 segment_end_index = EXCLUDED.segment_end_index,
                 start_seconds = EXCLUDED.start_seconds,
                 end_seconds = EXCLUDED.end_seconds,
                 text = EXCLUDED.text,
+                text_morphemes = EXCLUDED.text_morphemes,
                 embedding_model = EXCLUDED.embedding_model,
                 embedding = EXCLUDED.embedding,
                 metadata = EXCLUDED.metadata
@@ -247,6 +250,7 @@ class RagRepository:
                     chunk.start_seconds,
                     chunk.end_seconds,
                     chunk.text,
+                    chunk.text_morphemes,
                     chunk.embedding_model,
                     self._to_vector_literal(chunk.embedding),
                     self._to_json(chunk.metadata),
@@ -254,6 +258,295 @@ class RagRepository:
                 for chunk in search_chunks
             ],
         )
+
+    # keyword 검색과 vector 검색을 병렬로 실행하여 RRF(Reciprocal Rank Fusion)로 최종 순위를 결정한다.
+    # RRF는 각 채널의 원점수(ts_rank vs cosine similarity)를 직접 더하지 않고 "순위"만 사용한다.
+    # ts_rank(0.0x대)와 vector similarity(0.7~0.9대)는 스케일이 달라 가중 합산이 왜곡되는데,
+    # 순위 기반 융합은 이 스케일 불일치를 원천적으로 제거해 안정적인 하이브리드 순위를 만든다.
+    async def search_chunks_hybrid(
+        self,
+        morpheme_query: str,
+        embedding: list[float],
+        transcript_id: UUID | None,
+        user_id: UUID | None,
+        top_k: int,
+        keyword_weight: float = 0.6,
+        vector_weight: float = 0.4,
+        rrf_k: int = 60,
+    ) -> list[SearchChunkHit]:
+        """
+        기능 요약: 키워드/벡터 검색을 병렬 실행한 뒤 가중 RRF로 융합해 상위 top_k hit을 반환한다.
+
+        기능 흐름:
+            1. _search_by_keyword / _search_by_vector 병렬 실행 (각 채널은 자체 점수순 정렬됨)
+            2. 각 채널의 리스트 인덱스(0-based) → 순위(1-based)로 변환하여 RRF 점수 누적
+               score(doc) = Σ weight_i * 1 / (rrf_k + rank_i)
+               - 한쪽 채널에만 등장한 hit은 그 채널 기여분만 합산됨
+            3. RRF 점수를 score 필드에 담아 SearchChunkHit 재구성
+            4. RRF 점수 내림차순 정렬 후 top_k 반환
+
+        파라미터:
+            morpheme_query: 형태소 분석된 FTS 쿼리 (예: "다음 출시 일정 논의")
+            embedding: 원문 쿼리 임베딩 벡터 (길이 1536)
+            transcript_id / user_id: 검색 범위 한정 필터 (None이면 미적용)
+            top_k: 반환할 최대 hit 수
+            keyword_weight / vector_weight: 채널별 RRF 기여 가중치 (0.6 / 0.4)
+            rrf_k: RRF 완충 상수 — 클수록 상위·하위 순위 간 점수 차가 완만해짐 (관례값 60)
+        """
+        # 1. keyword 검색과 vector 검색을 병렬 실행 (각 결과는 자체 점수 기준 내림차순 정렬 상태)
+        keyword_hits, vector_hits = await asyncio.gather(
+            self._search_by_keyword(morpheme_query, transcript_id, user_id, top_k),
+            self._search_by_vector(embedding, transcript_id, user_id, top_k),
+        )
+
+        # 2. RRF 점수 누적 — 리스트 순서가 곧 순위이므로 enumerate 인덱스 + 1을 rank로 사용
+        #    source_by_id: score 재계산 후 SearchChunkHit를 복원하기 위한 원본 hit 보관
+        rrf_scores: dict[UUID, float] = {}
+        source_by_id: dict[UUID, SearchChunkHit] = {}
+
+        for rank, hit in enumerate(keyword_hits, start=1):
+            rrf_scores[hit.id] = rrf_scores.get(hit.id, 0.0) + keyword_weight / (rrf_k + rank)
+            source_by_id.setdefault(hit.id, hit)
+
+        for rank, hit in enumerate(vector_hits, start=1):
+            rrf_scores[hit.id] = rrf_scores.get(hit.id, 0.0) + vector_weight / (rrf_k + rank)
+            source_by_id.setdefault(hit.id, hit)
+
+        # 3. RRF 점수를 score 필드에 담아 SearchChunkHit 재구성
+        merged: list[SearchChunkHit] = [
+            SearchChunkHit(
+                id=hit.id,
+                transcript_id=hit.transcript_id,
+                parent_chunk_id=hit.parent_chunk_id,
+                child_index=hit.child_index,
+                start_seconds=hit.start_seconds,
+                end_seconds=hit.end_seconds,
+                text=hit.text,
+                score=rrf_scores[chunk_id],
+                embedding_model=hit.embedding_model,
+            )
+            for chunk_id, hit in source_by_id.items()
+        ]
+
+        # 4. RRF 점수 내림차순 정렬 후 top_k 반환
+        merged.sort(key=lambda h: h.score, reverse=True)
+        return merged[:top_k]
+
+    # FTS(전문 검색) 기반으로 search_chunks를 조회하는 내부 메서드.
+    # 형태소 분석된 text_morphemes 컬럼을 우선 사용하여 한국어 검색 정확도를 높인다.
+    async def _search_by_keyword(
+        self,
+        morpheme_query: str,
+        transcript_id: UUID | None,
+        user_id: UUID | None,
+        top_k: int,
+    ) -> list[SearchChunkHit]:
+
+        # 동적 WHERE 절과 파라미터 목록 구성
+        # $1은 항상 morpheme_query (ts_rank와 @@ 연산에 공통 사용)
+        params: list[Any] = [morpheme_query]
+        where_clauses = [
+            "to_tsvector('simple', coalesce(sc.text_morphemes, sc.text)) "
+            "@@ plainto_tsquery('simple', $1)"
+        ]
+
+        # transcript_id 필터 추가 — search_chunks 테이블에 직접 컬럼 존재
+        if transcript_id is not None:
+            params.append(transcript_id)
+            where_clauses.append(f"sc.transcript_id = ${len(params)}")
+
+        # user_id 필터 추가 — transcripts 테이블과 JOIN 필요
+        needs_join = user_id is not None
+        if user_id is not None:
+            params.append(user_id)
+            where_clauses.append(f"t.user_id = ${len(params)}")
+
+        where_sql = " AND ".join(where_clauses)
+
+        # user_id 필터가 있을 때만 transcripts 테이블 JOIN
+        join_sql = (
+            "JOIN transcripts t ON sc.transcript_id = t.id"
+            if needs_join
+            else ""
+        )
+
+        query = f"""
+            SELECT
+                sc.id,
+                sc.transcript_id,
+                sc.parent_chunk_id,
+                sc.child_index,
+                sc.start_seconds,
+                sc.end_seconds,
+                sc.text,
+                sc.embedding_model,
+                ts_rank(
+                    to_tsvector('simple', coalesce(sc.text_morphemes, sc.text)),
+                    plainto_tsquery('simple', $1)
+                ) AS score
+            FROM search_chunks sc
+            {join_sql}
+            WHERE {where_sql}
+            ORDER BY score DESC
+            LIMIT {top_k}
+        """
+
+        rows = await self._connection.fetch(query, *params)
+
+        return [
+            SearchChunkHit(
+                id=row["id"],
+                transcript_id=row["transcript_id"],
+                parent_chunk_id=row["parent_chunk_id"],
+                child_index=row["child_index"],
+                start_seconds=float(row["start_seconds"]) if row["start_seconds"] is not None else None,
+                end_seconds=float(row["end_seconds"]) if row["end_seconds"] is not None else None,
+                text=row["text"],
+                score=float(row["score"]),
+                embedding_model=row["embedding_model"],
+            )
+            for row in rows
+        ]
+
+    # pgvector 코사인 유사도 기반으로 search_chunks를 조회하는 내부 메서드.
+    # 의미적 유사성을 포착하여 키워드 검색이 놓치는 paraphrase/동의어 히트를 보완한다.
+    async def _search_by_vector(
+        self,
+        embedding: list[float],
+        transcript_id: UUID | None,
+        user_id: UUID | None,
+        top_k: int,
+    ) -> list[SearchChunkHit]:
+        """
+        기능 요약: pgvector <=> 연산자로 코사인 거리를 계산하여 유사 청크를 반환한다.
+
+        기능 흐름:
+            1. embedding을 vector literal로 변환
+            2. transcript_id / user_id 필터 조건 동적 추가
+            3. distance 오름차순(= score 내림차순), LIMIT top_k 쿼리 실행
+            4. score = 1.0 - distance 로 변환하여 반환
+
+        파라미터:
+            embedding: 쿼리 임베딩 벡터 (예: [0.1, 0.2, ...], 길이 1536)
+            transcript_id: 검색 범위 한정용 transcript UUID
+            user_id: 검색 범위 한정용 user UUID
+            top_k: 반환할 최대 결과 수
+        """
+        # $1은 항상 embedding vector literal
+        vector_literal = self._to_vector_literal(embedding)
+        params: list[Any] = [vector_literal]
+        where_clauses: list[str] = []
+
+        # transcript_id 필터 추가
+        if transcript_id is not None:
+            params.append(transcript_id)
+            where_clauses.append(f"sc.transcript_id = ${len(params)}")
+
+        # user_id 필터 추가 — transcripts 테이블과 JOIN 필요
+        needs_join = user_id is not None
+        if user_id is not None:
+            params.append(user_id)
+            where_clauses.append(f"t.user_id = ${len(params)}")
+
+        where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
+
+        # user_id 필터가 있을 때만 transcripts 테이블 JOIN
+        join_sql = (
+            "JOIN transcripts t ON sc.transcript_id = t.id"
+            if needs_join
+            else ""
+        )
+
+        query = f"""
+            SELECT
+                sc.id,
+                sc.transcript_id,
+                sc.parent_chunk_id,
+                sc.child_index,
+                sc.start_seconds,
+                sc.end_seconds,
+                sc.text,
+                sc.embedding_model,
+                (sc.embedding <=> $1::vector) AS distance
+            FROM search_chunks sc
+            {join_sql}
+            {where_sql}
+            ORDER BY distance ASC
+            LIMIT {top_k}
+        """
+
+        rows = await self._connection.fetch(query, *params)
+
+        return [
+            SearchChunkHit(
+                id=row["id"],
+                transcript_id=row["transcript_id"],
+                parent_chunk_id=row["parent_chunk_id"],
+                child_index=row["child_index"],
+                start_seconds=float(row["start_seconds"]) if row["start_seconds"] is not None else None,
+                end_seconds=float(row["end_seconds"]) if row["end_seconds"] is not None else None,
+                text=row["text"],
+                # 코사인 거리(0~2)를 유사도 점수(1~-1)로 변환: 거리가 작을수록 score가 높다
+                score=1.0 - float(row["distance"]),
+                embedding_model=row["embedding_model"],
+            )
+            for row in rows
+        ]
+
+    # 검색 히트된 child chunk의 부모 chunk 전체 문맥을 반환한다.
+    # RAG 응답 생성 시 LLM에게 풍부한 메타데이터(topic, keywords 등)를 제공하기 위해 사용한다.
+    async def get_parent_chunks(
+        self,
+        parent_chunk_ids: list[UUID],
+    ) -> list[ParentChunkResult]:
+        """
+        기능 요약: chunks 테이블에서 주어진 UUID 목록에 해당하는 parent chunk를 일괄 조회한다.
+
+        기능 흐름:
+            1. 빈 목록이면 즉시 [] 반환
+            2. ANY($1::uuid[]) 로 chunks 테이블 일괄 조회
+            3. ParentChunkResult 리스트로 매핑하여 반환
+
+        파라미터:
+            parent_chunk_ids: 조회할 chunk UUID 목록 (예: [UUID("a1b2..."), UUID("c3d4...")])
+        """
+        # 1. 빈 목록 조기 반환 — DB 쿼리 불필요
+        if not parent_chunk_ids:
+            return []
+
+        # 2. ANY 연산자로 일괄 조회 — N+1 쿼리 방지
+        # ANY 연산자는 조건에 맞는 값을 모두 리스트 형태로 리턴 가능 Postgresql 배열 타입 캐스팅
+        rows = await self._connection.fetch(
+            """
+            SELECT
+                id, transcript_id, domain_type, chunk_index,
+                topic, subtopic, keywords, speaker_labels,
+                start_seconds, end_seconds, text, summary, metadata
+            FROM chunks
+            WHERE id = ANY($1::uuid[])
+            """,
+            parent_chunk_ids,
+        )
+
+        # 3. ParentChunkResult 리스트로 매핑
+        return [
+            ParentChunkResult(
+                id=row["id"],
+                transcript_id=row["transcript_id"],
+                domain_type=row["domain_type"],
+                chunk_index=row["chunk_index"],
+                topic=row["topic"],
+                subtopic=row["subtopic"],
+                keywords=list(row["keywords"]) if row["keywords"] else [],
+                speaker_labels=list(row["speaker_labels"]) if row["speaker_labels"] else [],
+                start_seconds=float(row["start_seconds"]) if row["start_seconds"] is not None else None,
+                end_seconds=float(row["end_seconds"]) if row["end_seconds"] is not None else None,
+                text=row["text"],
+                summary=row["summary"],
+                metadata=dict(row["metadata"]) if row["metadata"] is not None else {},
+            )
+            for row in rows
+        ]
 
     # JSONB column에 넣을 metadata를 한글 손실 없이 문자열로 직렬화한다.
     def _to_json(self, value: dict[str, Any]) -> str:

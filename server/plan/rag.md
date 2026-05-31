@@ -7,8 +7,10 @@
 이제 저장된 데이터를 실제로 검색하고 LLM으로 답변을 생성하는 retrieval + generation 파이프라인이 필요하다.
 
 검색 방식은 **하이브리드 단일 전략**으로 고정한다:
-- 내부적으로 키워드(FTS) + 맥락 유사도(pgvector)를 각각 실행한 뒤 가중 합산으로 통합
-- **키워드 가중치 0.6 / 유사도 가중치 0.4** — 정확한 단어 매칭을 우선하되 의미 유사성을 보완
+- 내부적으로 키워드(FTS) + 맥락 유사도(pgvector)를 각각 실행한 뒤 **RRF(Reciprocal Rank Fusion)**로 통합
+- 원점수를 직접 더하지 않는 이유: `ts_rank`(0.0x대)와 cosine similarity(0.7~0.9대)는 스케일이 달라 가중 합산 시 벡터 점수가 항상 지배 → 키워드 가중치가 무의미해짐
+- RRF는 원점수 대신 **각 채널의 순위(rank)**만 사용하므로 스케일 불일치를 원천 제거
+- **키워드 가중치 0.6 / 유사도 가중치 0.4** — 순위 기여 비율로 적용, 정확한 단어 매칭을 우선하되 의미 유사성을 보완
 
 한국어 FTS 정확도를 위해 **MeCab 형태소 분석기**를 사용한다:
 - 청크 저장 시점에 형태소 분석 → `text_morphemes` 컬럼에 저장 → GIN 인덱스
@@ -40,7 +42,8 @@ RagQueryService.search(query, ...)
   │     FTS: to_tsvector('simple', text_morphemes) @@ plainto_tsquery('simple', morpheme_query)
   ├── RagRepository._search_by_vector(query_embedding, ...)
   │     pgvector: embedding <=> $1::vector
-  └── 가중 합산: score = 0.6 * keyword_score + 0.4 * vector_score
+  └── RRF 융합: score = Σ weight_i / (rrf_k + rank_i)
+        = 0.6 / (60 + keyword_rank) + 0.4 / (60 + vector_rank)
   ↓
 RagRepository.get_parent_chunks([hit.parent_chunk_id, ...]) → list[ParentChunkResult]
   ↓
@@ -116,30 +119,45 @@ class SearchChunkCreate(BaseModel):
 
 **신규 파일: `server/services/morpheme_service.py`**
 ```python
+from kiwipiepy import Kiwi
+from kiwipiepy.utils import Stopwords
+
+# 검색에 유효한 품사 태그
+_CONTENT_TAGS = {
+    "NNG",  # 일반명사
+    "NNP",  # 고유명사
+    "NNB",  # 의존명사
+    "VV",   # 동사
+    "VA",   # 형용사
+    "MAG",  # 일반부사
+    "SL",   # 외래어
+    "SH",   # 한자
+}
+
 class MorphemeService:
     def __init__(self) -> None:
-        import MeCab
-        self._tagger = MeCab.Tagger()
+        self._kiwi = Kiwi()
 
     def tokenize(self, text: str) -> str:
-        # MeCab으로 형태소 분석 → 명사(NN*)/동사 어간(VV, VA)/부사(MA) 추출
+        # kiwi.tokenize() → Token 목록에서 _CONTENT_TAGS 품사만 필터링 → 공백 구분 문자열
         # 예: "다음 출시 일정을 논의했다" → "다음 출시 일정 논의"
-        # 반환: 공백 구분 morpheme 문자열 (FTS plainto_tsquery 입력용)
+        tokens = self._kiwi.tokenize(text)
+        morphemes = [t.form for t in tokens if t.tag in _CONTENT_TAGS]
+        return " ".join(morphemes) if morphemes else text
 ```
 
 **`pyproject.toml` 추가:**
 ```
-"mecab-python3>=1.0.0"
+"kiwipiepy>=0.18.0"
 ```
 
-**시스템 설치 전제:**
-- macOS: `brew install mecab mecab-ko-dic`
-- Linux: `apt-get install mecab libmecab-dev mecab-ipadic-utf8` + [mecab-ko-dic](https://bitbucket.org/eunjeon/mecab-ko-dic)
-- Windows: 별도 binary 설치 필요 (README에 설치 지침 추가)
+**kiwipiepy 선택 이유:**
+- 순수 Python 패키지 (`pip install kiwipiepy` 만으로 설치 완료, 시스템 의존성 없음)
+- Windows/macOS/Linux 모두 동일하게 동작 — MeCab처럼 플랫폼별 바이너리 설치 불필요
+- 내장 한국어 사전으로 명사·동사·부사 품사 태그 제공
+- `t.tag`로 품사 필터링이 직관적이고, `t.form`이 어간 형태를 반환
 
-**MeCab 선택 이유:**
-- 한국어 형태소 분석 사실상 표준 도구. `mecab-ko-dic` (은전한닢)과 함께 사용 시 Korean 명사/용언 어간 추출 정확도 높음
-- `tokenize()` 실패 시(MeCab 미설치) 원문 텍스트를 그대로 반환해 fallback 가능
+**`tokenize()` fallback 이유:** 형태소 추출 결과가 빈 목록이면 원문 그대로 반환해 검색 누락 방지
 
 **필요성:** MorphemeService 없이는 "일정을" → "일정" 변환 불가 → 키워드 검색 정확도 저하
 
@@ -211,10 +229,13 @@ async def search_chunks_hybrid(
     top_k: int,
     keyword_weight: float = 0.6,
     vector_weight: float = 0.4,
+    rrf_k: int = 60,            # RRF 완충 상수 (문서 수와 무관, 관례값)
 ) -> list[SearchChunkHit]:
     # asyncio.gather(_search_by_keyword, _search_by_vector) 병렬 실행
-    # id 기준 병합: score = keyword_weight * kw_score + vector_weight * vec_score
-    # 한쪽만 hit된 경우 해당 score * weight 만 적용
+    # 각 채널 결과는 자체 점수순 정렬 → 리스트 인덱스 + 1 = 순위(rank)
+    # RRF 병합: score(doc) = Σ weight_i / (rrf_k + rank_i)
+    #   - 한쪽 채널에만 hit된 경우 해당 채널 기여분만 합산
+    #   - 원점수(ts_rank / cosine)는 순위 산출에만 쓰고 합산에는 미사용
 
 async def _search_by_keyword(
     self, morpheme_query: str, transcript_id: UUID | None, user_id: UUID | None, top_k: int,
@@ -239,6 +260,12 @@ async def get_parent_chunks(
 **가중치 이유:**
 - `keyword_weight=0.6`: 회의/강의 도메인에서 고유명사·일정·이름은 정확한 단어 일치가 의미 벡터보다 신뢰도 높음
 - `vector_weight=0.4`: "일정" 쿼리에 "스케줄", "출시 날짜" 같은 의미적 유사 표현을 보완
+- RRF에서 weight는 각 채널의 **순위 기여 비율**로 작동 — 원점수 스케일과 무관하게 0.6 : 0.4 비율이 보존됨
+
+**`rrf_k` 이유:**
+- 분모 `1 / (rrf_k + rank)`의 완충 상수. **문서 수가 아니라** 상위 순위 간 점수 격차를 조절하는 값
+- `rrf_k`가 작으면 1등이 독식, 크면 상위권이 평준화됨. 60은 원논문(Cormack et al., 2009) 및 ES 기본 관례값
+- 코퍼스 크기와 무관하므로 문서가 늘어도 수정 불필요. 변별력 튜닝이 필요할 때만 검증셋으로 조정
 
 **필요성:** 검색 메서드 없이는 retrieval 불가
 
@@ -349,7 +376,7 @@ async def rag_query(
 ### 수정 (5개)
 | 파일 | 변경 내용 |
 |------|-----------|
-| `server/pyproject.toml` | mecab-python3 추가 |
+| `server/pyproject.toml` | kiwipiepy 추가 |
 | `server/schemas/rag.py` | SearchChunkHit, ParentChunkResult, RagQueryRequest/Response 추가, SearchChunkCreate에 text_morphemes 추가 |
 | `server/repositories/rag_repository.py` | hybrid/keyword/vector search + parent hydration 메서드 4개 추가, insert_search_chunks SQL에 text_morphemes 추가 |
 | `server/services/search_chunk_builder.py` | MorphemeService 주입 + text_morphemes 생성 |
