@@ -166,6 +166,48 @@ class ParentChunkResult(BaseModel):
     metadata: dict[str, Any]
 
 
+# transcripts 테이블에서 id로 단건 조회한 읽기 전용 모델.
+# 요약 PDF 생성의 입력(full_text + 메타)을 담으며, get_transcript_by_id()가 반환한다.
+class TranscriptDetail(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    id: UUID
+    user_id: UUID | None
+    domain_type: str
+    title: str | None
+    full_text: str | None
+    summary: str | None
+    duration_seconds: float | None
+    language: str | None
+    status: str
+    created_at: Any | None = None
+
+
+# summary_documents 테이블 insert용 모델.
+# 생성된 구조화 요약 payload와 어떤 transcript/template로 만들었는지 메타를 함께 담는다.
+class SummaryDocumentCreate(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    transcript_id: UUID
+    user_id: UUID | None = None
+    template_id: str = Field(min_length=1)
+    payload: dict[str, Any]
+    model: str | None = None
+
+
+# summary_documents 테이블에서 읽어온 읽기 전용 모델.
+# 수정→재렌더 경로에서 저장된 template_id/payload를 다시 꺼내기 위해 사용한다.
+class SummaryDocumentDetail(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    id: UUID
+    transcript_id: UUID
+    user_id: UUID | None
+    template_id: str
+    payload: dict[str, Any]
+    model: str | None
+
+
 # POST /rag/query 엔드포인트 요청 모델.
 # query는 자연어 검색 질의, transcript_id는 특정 트랜스크립트로 검색 범위 한정 시 사용.
 class RagQueryRequest(BaseModel):

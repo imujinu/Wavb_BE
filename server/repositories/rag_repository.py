@@ -4,7 +4,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from db.connection import DatabaseConnection
-from schemas.rag import ChunkCreate, ChunkRow, ParentChunkResult, SearchChunkCreate, SearchChunkHit, SegmentCreate, TranscriptCreate, TranscriptResultUpdate
+from schemas.rag import ChunkCreate, ChunkRow, ParentChunkResult, SearchChunkCreate, SearchChunkHit, SegmentCreate, SummaryDocumentCreate, SummaryDocumentDetail, TranscriptCreate, TranscriptDetail, TranscriptResultUpdate
 
 
 class RagRepository:
@@ -63,6 +63,70 @@ class RagRepository:
             update.stt_model,
             update.status,
             update.error_message,
+        )
+
+    # 저장된 transcript를 id로 단건 조회해 요약 PDF 생성의 입력(full_text + 메타)을 제공한다.
+    # update_transcript_result()가 쓰기만 하던 full_text를 읽는 경로를 보완한다.
+    async def get_transcript_by_id(
+        self,
+        transcript_id: UUID,
+        user_id: UUID | None = None,
+    ) -> TranscriptDetail | None:
+        """
+        기능 요약: transcripts에서 id로 1건 조회한다. user_id가 주어지면 소유권까지 필터한다.
+
+        기능 흐름:
+            1. user_id 유무에 따라 소유권 필터(AND user_id = $2)를 동적으로 추가
+            2. fetchrow로 단건 조회 — 없으면 None 반환
+            3. TranscriptDetail 읽기 전용 모델로 매핑하여 반환
+
+        파라미터:
+            transcript_id: 조회할 transcript UUID (예: UUID("a1b2c3..."))
+            user_id: 소유권 검증용 사용자 UUID. None이면 소유권 필터 없이 조회 (예: 내부 배치)
+        """
+        # 1. user_id가 주어지면 타인 transcript 접근을 차단하는 소유권 필터를 추가
+        if user_id is not None:
+            row = await self._connection.fetchrow(
+                """
+                SELECT id, user_id, domain_type, title, full_text, summary,
+                       duration_seconds, language, status, created_at
+                FROM transcripts
+                WHERE id = $1 AND user_id = $2
+                """,
+                transcript_id,
+                user_id,
+            )
+        else:
+            row = await self._connection.fetchrow(
+                """
+                SELECT id, user_id, domain_type, title, full_text, summary,
+                       duration_seconds, language, status, created_at
+                FROM transcripts
+                WHERE id = $1
+                """,
+                transcript_id,
+            )
+
+        # 2. 조회 결과가 없으면 None — 라우트에서 404로 변환
+        if row is None:
+            return None
+
+        # 3. 읽기 전용 모델로 매핑 (NUMERIC duration_seconds는 float로 정규화)
+        return TranscriptDetail(
+            id=row["id"],
+            user_id=row["user_id"],
+            domain_type=row["domain_type"],
+            title=row["title"],
+            full_text=row["full_text"],
+            summary=row["summary"],
+            duration_seconds=(
+                float(row["duration_seconds"])
+                if row["duration_seconds"] is not None
+                else None
+            ),
+            language=row["language"],
+            status=row["status"],
+            created_at=row["created_at"],
         )
 
     # STT 최소 단위 segment를 저장해서 playback, 재chunking, speaker 검색의 기준으로 사용한다.
@@ -547,6 +611,144 @@ class RagRepository:
             )
             for row in rows
         ]
+
+    # 생성된 요약 문서(구조화 payload)를 저장하고 이후 수정/재렌더의 기준 id를 반환한다.
+    # payload를 영속화해 두면 동일 transcript 재요청 시 LLM 재호출 없이 PDF만 다시 그릴 수 있다.
+    async def insert_summary_document(self, document: SummaryDocumentCreate) -> UUID:
+        """
+        기능 요약: summary_documents에 1건 insert하고 생성된 id를 반환한다.
+
+        기능 흐름:
+            1. uuid4()로 문서 id를 발급
+            2. payload는 _to_json()으로 한글 손실 없이 JSONB 직렬화
+            3. RETURNING id로 발급된 id를 회수해 반환
+
+        파라미터:
+            document: 저장할 문서 (transcript_id, template_id, payload, model 등)
+        """
+        # 1. 문서 id 발급
+        document_id = uuid4()
+        row = await self._connection.fetchrow(
+            """
+            INSERT INTO summary_documents (
+              id, transcript_id, user_id, template_id, payload, model
+            )
+            VALUES ($1, $2, $3, $4, $5::jsonb, $6)
+            RETURNING id
+            """,
+            document_id,
+            document.transcript_id,
+            document.user_id,
+            document.template_id,
+            self._to_json(document.payload),
+            document.model,
+        )
+        return row["id"] if row else document_id
+
+    # 저장된 요약 문서를 id로 조회해 수정→재렌더 경로의 입력(template_id + payload)을 제공한다.
+    async def get_summary_document_by_id(
+        self,
+        document_id: UUID,
+        user_id: UUID | None = None,
+    ) -> SummaryDocumentDetail | None:
+        """
+        기능 요약: summary_documents에서 id로 1건 조회한다. user_id가 주어지면 소유권까지 필터한다.
+
+        기능 흐름:
+            1. user_id 유무에 따라 소유권 필터를 동적으로 추가
+            2. fetchrow로 단건 조회 — 없으면 None
+            3. payload(JSONB)는 dict로 정규화하여 SummaryDocumentDetail로 매핑
+
+        파라미터:
+            document_id: 조회할 문서 UUID
+            user_id: 소유권 검증용 사용자 UUID. None이면 소유권 필터 없이 조회
+        """
+        # 1. 소유권 필터 동적 구성
+        if user_id is not None:
+            row = await self._connection.fetchrow(
+                """
+                SELECT id, transcript_id, user_id, template_id, payload, model
+                FROM summary_documents
+                WHERE id = $1 AND user_id = $2
+                """,
+                document_id,
+                user_id,
+            )
+        else:
+            row = await self._connection.fetchrow(
+                """
+                SELECT id, transcript_id, user_id, template_id, payload, model
+                FROM summary_documents
+                WHERE id = $1
+                """,
+                document_id,
+            )
+
+        # 2. 없으면 None — 라우트에서 404로 변환
+        if row is None:
+            return None
+
+        # 3. payload는 asyncpg가 str(JSON)로 줄 수도, dict로 줄 수도 있으므로 dict로 정규화
+        payload = row["payload"]
+        if isinstance(payload, str):
+            payload = json.loads(payload)
+
+        return SummaryDocumentDetail(
+            id=row["id"],
+            transcript_id=row["transcript_id"],
+            user_id=row["user_id"],
+            template_id=row["template_id"],
+            payload=payload if isinstance(payload, dict) else {},
+            model=row["model"],
+        )
+
+    # 저장된 요약 문서의 payload를 수정 내용으로 갱신한다(LLM 재호출 없는 재렌더의 첫 단계).
+    async def update_summary_document_payload(
+        self,
+        document_id: UUID,
+        payload: dict[str, Any],
+        user_id: UUID | None = None,
+    ) -> bool:
+        """
+        기능 요약: summary_documents.payload를 갱신하고, 갱신된 행 존재 여부를 반환한다.
+
+        기능 흐름:
+            1. user_id 유무에 따라 소유권 조건을 동적으로 추가
+            2. payload는 _to_json()으로 JSONB 직렬화, updated_at은 now()로 갱신
+            3. RETURNING id로 실제 갱신 여부를 판별해 bool 반환 (없으면 False → 라우트 404)
+
+        파라미터:
+            document_id: 갱신할 문서 UUID
+            payload: 수정된 구조화 요약 (예: {"overview": "...", "decisions": [...]})
+            user_id: 소유권 검증용 사용자 UUID
+        """
+        # 1. 소유권 조건 동적 구성
+        if user_id is not None:
+            row = await self._connection.fetchrow(
+                """
+                UPDATE summary_documents
+                SET payload = $2::jsonb, updated_at = now()
+                WHERE id = $1 AND user_id = $3
+                RETURNING id
+                """,
+                document_id,
+                self._to_json(payload),
+                user_id,
+            )
+        else:
+            row = await self._connection.fetchrow(
+                """
+                UPDATE summary_documents
+                SET payload = $2::jsonb, updated_at = now()
+                WHERE id = $1
+                RETURNING id
+                """,
+                document_id,
+                self._to_json(payload),
+            )
+
+        # 2. 갱신된 행이 있으면 True
+        return row is not None
 
     # JSONB column에 넣을 metadata를 한글 손실 없이 문자열로 직렬화한다.
     def _to_json(self, value: dict[str, Any]) -> str:
