@@ -37,8 +37,8 @@ class RealtimeTranscriptionService:
 
         tmp_path: str | None = None
         try:
-            # 1. bytes → 임시 파일 저장
-            with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as tmp:
+            # 1. bytes → 임시 파일 저장 (expo-av HIGH_QUALITY 프리셋은 iOS/Android 모두 m4a 출력)
+            with tempfile.NamedTemporaryFile(suffix=".m4a", delete=False) as tmp:
                 tmp.write(audio_bytes)
                 tmp_path = tmp.name
 

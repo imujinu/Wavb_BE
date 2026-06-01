@@ -14,7 +14,7 @@ Set `OPENAI_API_KEY` in `.env`.
 ## Run
 
 ```bash
-uv run uvicorn main:app --reload
+uv run python -m uvicorn main:app --reload
 ```
 
 ## API

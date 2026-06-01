@@ -23,6 +23,7 @@ from services.embedding_service import EmbeddingService
 from services.morpheme_service import MorphemeService
 from services.search_chunk_builder import SearchChunkBuilder
 from services.transcription_service import TranscriptionService, TranscriptionSegment
+from settings import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -109,12 +110,7 @@ class TranscriptIngestionService:
                 transcription.segments,
                 stt_model=transcription.stt_model,
             )
-            await self._repository.insert_segments(transcript_id, segments)
-            chunks = await self._build_chunks(domain_type, segments)
-            chunks = await self._enrich_chunks(chunks)
-            await self._repository.insert_chunks(transcript_id, chunks)
-            # search chunks indexing — 실패해도 transcript는 completed 상태 유지
-            await self._build_and_index_search_chunks(transcript_id, segments)
+            chunks = await self._run_pipeline(transcript_id, segments, domain_type)
         except Exception as exc:
             await self._repository.update_transcript_result(
                 transcript_id,
@@ -133,6 +129,77 @@ class TranscriptIngestionService:
             segment_count=len(segments),
             chunk_count=len(chunks),
         )
+
+    # 실시간 녹음 세션에서 클라이언트가 전달한 segments로 transcript를 저장한다.
+    # STT 단계를 건너뛰고 기존 청킹/임베딩 파이프라인을 재사용한다.
+    async def ingest_from_segments(
+        self,
+        segments: list[SegmentCreate],
+        domain_type: DomainType,
+        title: str | None = None,
+        duration_seconds: float | None = None,
+        user_id: UUID | None = None,
+    ) -> TranscriptIngestionResult:
+        settings = get_settings()
+        stt_model = settings.openai_stt_model
+        transcript_id = await self._repository.create_transcript(
+            TranscriptCreate(
+                user_id=user_id,
+                domain_type=domain_type,
+                title=title,
+                source_audio_uri="realtime://recording",
+                duration_seconds=duration_seconds,
+                stt_model=stt_model,
+                status="processing",
+            )
+        )
+
+        try:
+            full_text = " ".join(s.text for s in segments)
+            await self._repository.update_transcript_result(
+                transcript_id,
+                TranscriptResultUpdate(
+                    full_text=full_text,
+                    duration_seconds=duration_seconds,
+                    stt_model=stt_model,
+                    status="completed",
+                ),
+            )
+            chunks = await self._run_pipeline(transcript_id, segments, domain_type)
+        except Exception as exc:
+            await self._repository.update_transcript_result(
+                transcript_id,
+                TranscriptResultUpdate(
+                    status="failed",
+                    error_message=str(getattr(exc, "detail", exc)),
+                ),
+            )
+            raise
+
+        return TranscriptIngestionResult(
+            transcript_id=transcript_id,
+            transcript=full_text,
+            duration_seconds=duration_seconds,
+            stt_model=stt_model,
+            segment_count=len(segments),
+            chunk_count=len(chunks),
+        )
+
+    # ingest_upload과 ingest_from_segments의 공통 후처리를 담당한다.
+    # segments 저장 → 청크 생성/enrichment/저장 → search chunk 인덱싱 순서로 실행된다.
+    async def _run_pipeline(
+        self,
+        transcript_id: UUID,
+        segments: list[SegmentCreate],
+        domain_type: DomainType,
+    ) -> list[ChunkCreate]:
+        await self._repository.insert_segments(transcript_id, segments)
+        chunks = await self._build_chunks(domain_type, segments)
+        chunks = await self._enrich_chunks(chunks)
+        await self._repository.insert_chunks(transcript_id, chunks)
+        # search chunks indexing — 실패해도 transcript는 completed 상태 유지
+        await self._build_and_index_search_chunks(transcript_id, segments)
+        return chunks
 
     # LLM planner로 맥락 경계를 먼저 정하고, plan을 chunks 테이블 입력 모델로 변환합니다.
     # planner 초기화나 호출, plan 변환이 실패하면 deterministic fallback chunk를 저장합니다.
