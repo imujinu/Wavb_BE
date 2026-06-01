@@ -53,6 +53,21 @@ class Settings(BaseSettings):
     jwt_access_token_expire_minutes: int = Field(60, alias="JWT_ACCESS_TOKEN_EXPIRE_MINUTES")
     jwt_refresh_token_expire_days: int = Field(30, alias="JWT_REFRESH_TOKEN_EXPIRE_DAYS")
 
+    # Google OAuth (console.cloud.google.com)
+    google_client_id: str = Field("", alias="GOOGLE_CLIENT_ID")
+    google_client_secret: str = Field("", alias="GOOGLE_CLIENT_SECRET")
+    google_redirect_uri: str = Field("", alias="GOOGLE_REDIRECT_URI")
+
+    # Kakao OAuth (developers.kakao.com — REST API 키)
+    kakao_client_id: str = Field("", alias="KAKAO_CLIENT_ID")
+    kakao_client_secret: str = Field("", alias="KAKAO_CLIENT_SECRET")
+    kakao_redirect_uri: str = Field("", alias="KAKAO_REDIRECT_URI")
+
+    # Naver OAuth (developers.naver.com)
+    naver_client_id: str = Field("", alias="NAVER_CLIENT_ID")
+    naver_client_secret: str = Field("", alias="NAVER_CLIENT_SECRET")
+    naver_redirect_uri: str = Field("", alias="NAVER_REDIRECT_URI")
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @property
