@@ -43,3 +43,8 @@
 /understand src/frontend
 
 -------------------------------
+
+
+uvicorn main:app --host 0.0.0.0 --port 8000
+
+New-NetFirewallRule -DisplayName "Recordoc BE 8000" -Direction Inbound -Protocol TCP -LocalPort 8000 -Action Allow

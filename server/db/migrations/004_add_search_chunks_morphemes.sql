@@ -1,3 +1,4 @@
+-- Active: 1780321728388@@127.0.0.1@5432@recordoc
 -- search_chunks 테이블에 형태소 분석 결과를 저장하는 text_morphemes 컬럼 추가
 -- 원본 text를 보존하면서 FTS 전용 형태소 텍스트를 분리 관리한다.
 --
