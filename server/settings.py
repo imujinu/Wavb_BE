@@ -33,6 +33,16 @@ class Settings(BaseSettings):
         alias="SUMMARY_TEXT_CHUNK_CHARS",
     )
     summary_concurrency: int = Field(2, alias="SUMMARY_CONCURRENCY")
+    # 템플릿 기반 요약 PDF 생성에 사용하는 설정값.
+    # summary_pdf_model: 요약 품질/비용 조정용 모델 (기존 요약 모델과 동일 기본값)
+    # summary_pdf_max_input_chars: 단일 LLM 호출로 처리할 입력 상한 (초과 시 앞부분만 사용)
+    # summary_pdf_font_path: 한글 글꼴 경로 (빈 값이면 번들 기본 글꼴 사용)
+    summary_pdf_model: str = Field("gpt-4o-mini", alias="SUMMARY_PDF_MODEL")
+    summary_pdf_max_input_chars: int = Field(
+        48000,
+        alias="SUMMARY_PDF_MAX_INPUT_CHARS",
+    )
+    summary_pdf_font_path: str = Field("", alias="SUMMARY_PDF_FONT_PATH")
     allowed_origins_raw: str = Field(
         "http://localhost:8081,http://localhost:19006",
         alias="ALLOWED_ORIGINS",

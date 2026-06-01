@@ -10,6 +10,7 @@ from schemas.rag import (
     ChunkCreate,
     SearchChunkCreate,
     SegmentCreate,
+    SummaryDocumentCreate,
     TranscriptCreate,
     TranscriptResultUpdate,
 )
@@ -696,6 +697,138 @@ async def test_get_parent_chunks_queries_chunks_table() -> None:
     assert "uuid[]" in sql
     assert "chunks" in sql
     assert args[0] == [chunk_id]
+
+
+# --- get_transcript_by_id / summary_documents 영속화 테스트 ---
+
+
+class FetchrowConnection:
+    """fetchrow 반환값을 테스트에서 직접 지정할 수 있는 가짜 커넥션."""
+
+    def __init__(self, fetchrow_result) -> None:
+        self.fetchrow_result = fetchrow_result
+        self.calls: list[tuple[str, tuple]] = []
+
+    async def fetchrow(self, query: str, *args):
+        self.calls.append((query, args))
+        return self.fetchrow_result
+
+    async def execute(self, query: str, *args):
+        self.calls.append((query, args))
+
+
+@pytest.mark.asyncio
+async def test_get_transcript_by_id_maps_row_and_filters_owner() -> None:
+    transcript_id = uuid4()
+    user_id = uuid4()
+    connection = FetchrowConnection({
+        "id": transcript_id,
+        "user_id": user_id,
+        "domain_type": "meeting",
+        "title": "주간 회의",
+        "full_text": "회의 원문",
+        "summary": None,
+        "duration_seconds": 12.5,
+        "language": "ko",
+        "status": "completed",
+        "created_at": None,
+    })
+    repository = RagRepository(connection)
+
+    detail = await repository.get_transcript_by_id(transcript_id, user_id)
+
+    assert detail is not None
+    assert detail.id == transcript_id
+    assert detail.full_text == "회의 원문"
+    assert abs(detail.duration_seconds - 12.5) < 1e-6
+    # user_id가 주어지면 소유권 필터(AND user_id = $2)가 SQL에 포함되고 인자로 전달됨
+    sql, args = connection.calls[0]
+    assert "AND user_id = $2" in sql
+    assert args[1] == user_id
+
+
+@pytest.mark.asyncio
+async def test_get_transcript_by_id_returns_none_when_missing() -> None:
+    connection = FetchrowConnection(None)
+    repository = RagRepository(connection)
+
+    detail = await repository.get_transcript_by_id(uuid4())
+
+    assert detail is None
+
+
+@pytest.mark.asyncio
+async def test_insert_summary_document_serializes_payload() -> None:
+    document_id_holder = {}
+
+    class InsertConnection(FetchrowConnection):
+        async def fetchrow(self, query: str, *args):
+            self.calls.append((query, args))
+            # RETURNING id → 첫 인자(발급된 id)를 그대로 반환
+            document_id_holder["id"] = args[0]
+            return {"id": args[0]}
+
+    connection = InsertConnection(None)
+    repository = RagRepository(connection)
+
+    returned_id = await repository.insert_summary_document(
+        SummaryDocumentCreate(
+            transcript_id=uuid4(),
+            user_id=uuid4(),
+            template_id="meeting_weekly",
+            payload={"개요": "한글 payload", "items": ["a", "b"]},
+            model="gpt-4o-mini",
+        )
+    )
+
+    assert returned_id == document_id_holder["id"]
+    sql, args = connection.calls[0]
+    assert "INSERT INTO summary_documents" in sql
+    # payload($5)는 한글 손실 없는 JSON 문자열로 직렬화됨
+    assert args[4] == '{"개요": "한글 payload", "items": ["a", "b"]}'
+    assert args[3] == "meeting_weekly"
+
+
+@pytest.mark.asyncio
+async def test_get_summary_document_parses_json_payload() -> None:
+    doc_id = uuid4()
+    transcript_id = uuid4()
+    user_id = uuid4()
+    connection = FetchrowConnection({
+        "id": doc_id,
+        "transcript_id": transcript_id,
+        "user_id": user_id,
+        "template_id": "meeting_weekly",
+        # asyncpg가 JSONB를 문자열로 줄 수 있는 경우를 가정
+        "payload": '{"overview": "기존 개요"}',
+        "model": "gpt-4o-mini",
+    })
+    repository = RagRepository(connection)
+
+    detail = await repository.get_summary_document_by_id(doc_id, user_id)
+
+    assert detail is not None
+    assert detail.template_id == "meeting_weekly"
+    assert detail.payload == {"overview": "기존 개요"}
+
+
+@pytest.mark.asyncio
+async def test_update_summary_document_payload_returns_bool() -> None:
+    # 갱신된 행이 있으면 True
+    connection = FetchrowConnection({"id": uuid4()})
+    repository = RagRepository(connection)
+    updated = await repository.update_summary_document_payload(
+        uuid4(), {"overview": "수정"}, uuid4()
+    )
+    assert updated is True
+
+    # 갱신된 행이 없으면 False
+    connection_missing = FetchrowConnection(None)
+    repository_missing = RagRepository(connection_missing)
+    not_updated = await repository_missing.update_summary_document_payload(
+        uuid4(), {"overview": "수정"}
+    )
+    assert not_updated is False
 
 
 @pytest.mark.asyncio
