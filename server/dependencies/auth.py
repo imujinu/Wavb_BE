@@ -26,6 +26,18 @@ async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(_bearer),
     auth_service: AuthService = Depends(get_auth_service),
 ) -> CurrentUser:
-    
+
     # 1. 추출된 Bearer 토큰을 AuthService로 전달하여 검증
     return auth_service.decode_access_token(credentials.credentials)
+
+
+async def get_oauth_service(
+    connection: DatabaseConnection = Depends(get_connection),
+):
+    # 순환 임포트 방지를 위해 함수 내부에서 로컬 임포트 사용
+    from repositories.oauth_repository import OAuthRepository
+    from services.oauth_service import OAuthService
+
+    # 1. DB 커넥션을 OAuthRepository에 주입
+    # 2. OAuthRepository를 OAuthService에 주입하여 요청 범위 인스턴스 생성
+    yield OAuthService(repository=OAuthRepository(connection))

@@ -38,3 +38,16 @@ class CurrentUser(BaseModel):
 
     user_id: UUID
     email: str
+
+
+class OAuthLoginRequest(BaseModel):
+    """Google / Kakao OAuth 인가 코드 로그인 요청"""
+    model_config = ConfigDict(frozen=True)
+    code: str
+
+
+class OAuthNaverLoginRequest(BaseModel):
+    """Naver OAuth 인가 코드 로그인 요청 — state는 CSRF 방어용"""
+    model_config = ConfigDict(frozen=True)
+    code: str
+    state: str

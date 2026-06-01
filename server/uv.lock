@@ -988,6 +988,7 @@ dependencies = [
     { name = "email-validator" },
     { name = "fastapi" },
     { name = "fpdf2" },
+    { name = "httpx" },
     { name = "imageio-ffmpeg" },
     { name = "kiwipiepy" },
     { name = "openai" },
@@ -999,7 +1000,6 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "httpx" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
 ]
@@ -1011,6 +1011,7 @@ requires-dist = [
     { name = "email-validator", specifier = ">=2.0" },
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "fpdf2", specifier = ">=2.7" },
+    { name = "httpx", specifier = ">=0.27.0" },
     { name = "imageio-ffmpeg", specifier = ">=0.5.1" },
     { name = "kiwipiepy", specifier = ">=0.17.0" },
     { name = "openai", specifier = ">=1.0.0" },
@@ -1022,7 +1023,6 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "httpx", specifier = ">=0.27.0" },
     { name = "pytest", specifier = ">=8.0.0" },
     { name = "pytest-asyncio", specifier = ">=0.24.0" },
 ]

@@ -75,6 +75,69 @@ PostgreSQL 16 + pgvector. Three core tables:
 - **LLM fallback**: `ContextChunkPlanningService` uses an LLM to plan semantic chunk boundaries; if it fails, a deterministic `FallbackChunkBuilder` takes over.
 - **Metadata enrichment**: `ChunkMetadataService` is optional — the pipeline completes without it if the service is unavailable.
 
+## Frontend 프로젝트 참조 (`../Recordoc_FE/`)
+
+프론트엔드는 Expo SDK 54 + React Native + TypeScript로 구성된 모바일 앱입니다.
+
+### 폴더 구조
+
+```
+Recordoc_FE/
+├── app/                          # expo-router 라우트 (얇은 wrapper)
+│   ├── _layout.tsx               # Root Stack: (tabs) + recording modal
+│   ├── landing.tsx               # → LandingScreen
+│   ├── login.tsx                 # → LoginScreen
+│   ├── recording.tsx             # → RecordingScreen
+│   ├── detail.tsx                # → DetailScreen
+│   └── (tabs)/
+│       ├── _layout.tsx           # Tabs + 커스텀 TabBar
+│       ├── index.tsx             # → HomeScreen (루트 경로 /)
+│       ├── my-work.tsx           # → WorkListScreen
+│       ├── chat.tsx              # stub
+│       └── more.tsx              # stub
+│
+├── src/
+│   ├── screens/                  # 실제 화면 컴포넌트
+│   │   ├── LandingScreen.tsx
+│   │   ├── LoginScreen.tsx       # 인증 화면 (POST /auth/*)
+│   │   ├── HomeScreen.tsx
+│   │   ├── WorkListScreen.tsx    # 업로드된 녹음 목록 (GET /audio/transcripts)
+│   │   ├── DetailScreen.tsx      # 트랜스크립트 상세 (GET /audio/transcripts/:id)
+│   │   ├── RecordingScreen.tsx   # 녹음 화면 (POST /audio/transcripts - 미연동)
+│   │   └── UploadScreen.tsx      # 파일 업로드 (POST /audio/transcripts)
+│   │
+│   ├── components/
+│   │   ├── TabBar.tsx            # 커스텀 탭바
+│   │   ├── TabBar.styles.ts
+│   │   └── StopRecordingModal.tsx
+│   │
+│   └── styles/
+│       ├── theme.ts              # 공유 색상 토큰
+│       ├── HomeScreen.styles.ts
+│       └── RecordingScreen.styles.ts
+│
+├── app.json                      # Expo 앱 설정 (name, bundle ID 등)
+├── tsconfig.json                 # @/ → src/ import alias
+└── metro.config.js
+```
+
+### 화면 ↔ API 매핑
+
+| 화면 | 호출 API |
+|------|---------|
+| `LoginScreen` | `POST /auth/login`, `POST /auth/register` |
+| `WorkListScreen` | `GET /audio/transcripts` |
+| `DetailScreen` | `GET /audio/transcripts/:id`, `POST /rag/query` |
+| `UploadScreen` | `POST /audio/transcripts` (multipart/form-data) |
+| `RecordingScreen` | 미연동 (mock 데이터) — 추후 `POST /audio/transcripts` 또는 실시간 WebSocket |
+
+### 현재 연동 상태
+
+- **미연동**: `RecordingScreen` 타이머·스크립트는 mock 데이터. `StopRecordingModal.onConfirm`은 `router.back()`만 호출.
+- **실시간**: `routes/realtime.py` 엔드포인트 존재하나 FE 연동 미완성.
+
+---
+
 ## External Dependencies
 
 - **FFmpeg** — required at runtime (provided via `imageio-ffmpeg`)
