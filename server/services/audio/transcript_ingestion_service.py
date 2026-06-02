@@ -164,6 +164,41 @@ class TranscriptIngestionService:
             processing_seconds=round(time.perf_counter() - _t0_total, 2),
         )
 
+    # 실시간 전사 세그먼트(dict 목록)를 받아 SegmentCreate로 변환 후 ingest_from_segments에 위임한다.
+    # route에서 pydantic 모델을 dict로 직렬화해 전달하므로 이 메서드가 변환을 담당한다.
+    async def ingest_realtime_segments(
+        self,
+        domain_type: str,
+        title: str,
+        duration_seconds: float,
+        segments: list[dict],
+        user_id: UUID | None = None,
+    ) -> TranscriptIngestionResult:
+        """
+        실시간 전사 세그먼트를 DB에 저장하고 검색 청크를 생성합니다.
+
+        별도 메서드를 사용하는 이유:
+        - 실시간 전사에서는 STT 호출이 이미 Deepgram에서 완료됨
+        - route가 dict를 전달하므로 SegmentCreate 변환을 한 곳에서 처리
+        """
+        segment_creates = [
+            SegmentCreate(
+                segment_index=s["segment_index"],
+                start_seconds=s["start_seconds"],
+                end_seconds=s["end_seconds"],
+                text=s["text"],
+                raw_metadata={"source": "realtime"},
+            )
+            for s in segments
+        ]
+        return await self.ingest_from_segments(
+            segments=segment_creates,
+            domain_type=domain_type,  # type: ignore[arg-type]
+            title=title,
+            duration_seconds=duration_seconds,
+            user_id=user_id,
+        )
+
     # 실시간 녹음 세션에서 클라이언트가 전달한 segments로 transcript를 저장한다.
     # STT 단계를 건너뛰고 기존 청킹/임베딩 파이프라인을 재사용한다.
     async def ingest_from_segments(

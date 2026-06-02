@@ -95,9 +95,11 @@ def test_audio_transcripts_persists_stt_flow(monkeypatch) -> None:
         def __init__(self, repository):
             self.repository = repository
 
-        async def ingest_upload(self, file, domain_type, title=None, user_id=None):
-            assert domain_type == "meeting"
-            assert title == "주간 회의"
+        async def ingest_upload(
+            self, file, file_uri, file_name, languages, domain_types, user_id=None
+        ):
+            assert domain_types == ["general"]
+            assert file_name == "주간회의.mp3"
             # JWT에서 주입된 user_id가 올바르게 전달됐는지 검증
             assert user_id == fake_user_id
             return FakeIngestionResult()
@@ -117,8 +119,13 @@ def test_audio_transcripts_persists_stt_flow(monkeypatch) -> None:
     try:
         response = client.post(
             "/audio/transcripts",
-            data={"domain_type": "meeting", "title": "주간 회의"},
-            files={"file": ("meeting.mp3", b"fake audio", "audio/mpeg")},
+            data={
+                "domain_type": "general",
+                "file_uri": "upload://주간회의.mp3",
+                "file_name": "주간회의.mp3",
+                "languages": "ko",
+            },
+            files={"file": ("주간회의.mp3", b"fake audio", "audio/mpeg")},
         )
     finally:
         app.dependency_overrides.clear()

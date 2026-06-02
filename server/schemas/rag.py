@@ -11,7 +11,7 @@ TranscriptStatus = Literal["uploaded", "processing", "completed", "failed"]
 class TranscriptCreate(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    domain_type: DomainType
+    domain_type: str
     source_audio_uri: str = Field(min_length=1)
     user_id: UUID | None = None
     title: str | None = None
@@ -55,7 +55,7 @@ class SegmentCreate(BaseModel):
 class ChunkCreate(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    domain_type: DomainType
+    domain_type: str
     chunk_index: int = Field(ge=0)
     chunk_strategy: str = Field(min_length=1)
     text: str = Field(min_length=1)

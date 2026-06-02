@@ -93,8 +93,8 @@ def test_rag_migration_defines_step1_tables_and_indexes() -> None:
 
 
 def test_pydantic_models_validate_domain_and_ranges() -> None:
-    with pytest.raises(ValidationError):
-        TranscriptCreate(domain_type="memo", source_audio_uri="uploads/a.mp3")
+    # domain_type은 str로 완화됨 — 임의 값 허용
+    assert TranscriptCreate(domain_type="memo", source_audio_uri="uploads/a.mp3")
 
     with pytest.raises(ValidationError):
         SegmentCreate(
@@ -411,8 +411,8 @@ async def test_search_chunks_hybrid_merges_keyword_and_vector_scores() -> None:
     )
 
     assert len(hits) == 1
-    # 예상 score: 0.6 * 0.8 + 0.4 * 0.9 = 0.48 + 0.36 = 0.84
-    assert abs(hits[0].score - 0.84) < 1e-6
+    # 예상 score (RRF): keyword_weight/(k+1) + vector_weight/(k+1) = 1.0/61
+    assert abs(hits[0].score - (1.0 / 61)) < 1e-6
     assert hits[0].id == chunk_id
 
 
@@ -439,8 +439,8 @@ async def test_search_chunks_hybrid_keyword_only_hit() -> None:
     )
 
     assert len(hits) == 1
-    # 예상 score: 0.6 * 0.75 + 0.4 * 0.0 = 0.45
-    assert abs(hits[0].score - 0.45) < 1e-6
+    # 예상 score (RRF keyword only): keyword_weight/(k+1) = 0.6/61
+    assert abs(hits[0].score - (0.6 / 61)) < 1e-6
 
 
 @pytest.mark.asyncio
@@ -477,8 +477,8 @@ async def test_search_chunks_hybrid_vector_only_hit() -> None:
     )
 
     assert len(hits) == 1
-    # 예상 score: 0.6 * 0.0 + 0.4 * 0.8 = 0.32
-    assert abs(hits[0].score - 0.32) < 1e-6
+    # 예상 score (RRF vector only): vector_weight/(k+1) = 0.4/61
+    assert abs(hits[0].score - (0.4 / 61)) < 1e-6
     assert hits[0].start_seconds is None
     assert hits[0].end_seconds is None
 

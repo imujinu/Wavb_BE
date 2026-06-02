@@ -68,6 +68,13 @@ class Settings(BaseSettings):
     naver_client_secret: str = Field("", alias="NAVER_CLIENT_SECRET")
     naver_redirect_uri: str = Field("", alias="NAVER_REDIRECT_URI")
 
+    # Deepgram API 키 (실시간 전사용)
+    deepgram_api_key: str = Field("", alias="DEEPGRAM_API_KEY")
+
+    # STT provider 선택 — 추후 모델 교체 시 변경
+    # 지원 값: "deepgram" (현재)
+    stt_provider: str = Field("deepgram", alias="STT_PROVIDER")
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @property
