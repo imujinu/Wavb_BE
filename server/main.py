@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -7,6 +9,11 @@ from routes.oauth import router as oauth_router
 from routes.rag import router as rag_router
 from routes.realtime import router as realtime_router
 from settings import get_settings
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)-8s %(name)s: %(message)s",
+)
 
 
 settings = get_settings()

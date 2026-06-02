@@ -1,4 +1,5 @@
 import logging
+import time
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -36,6 +37,7 @@ class TranscriptIngestionResult:
     stt_model: str
     segment_count: int
     chunk_count: int
+    processing_seconds: float
 
 
 class TranscriptIngestionService:
@@ -91,7 +93,17 @@ class TranscriptIngestionService:
         )
 
         try:
+            _t0_total = time.perf_counter()
+
+            _t0 = time.perf_counter()
             transcription = await self._transcription_service.transcribe_with_segments(file)
+            logger.info(
+                "[timing] STT: %.2fs  (duration=%.1fs, model=%s)",
+                time.perf_counter() - _t0,
+                transcription.duration_seconds or 0,
+                transcription.stt_model,
+            )
+
             if not transcription.text.strip():
                 raise HTTPException(
                     status_code=422,
@@ -110,7 +122,19 @@ class TranscriptIngestionService:
                 transcription.segments,
                 stt_model=transcription.stt_model,
             )
+
+            _t0 = time.perf_counter()
             chunks = await self._run_pipeline(transcript_id, segments, domain_type)
+            logger.info(
+                "[timing] pipeline total: %.2fs  (segments=%d, chunks=%d)",
+                time.perf_counter() - _t0,
+                len(segments),
+                len(chunks),
+            )
+            logger.info(
+                "[timing] ingest_upload total: %.2fs",
+                time.perf_counter() - _t0_total,
+            )
         except Exception as exc:
             await self._repository.update_transcript_result(
                 transcript_id,
@@ -128,6 +152,7 @@ class TranscriptIngestionService:
             stt_model=transcription.stt_model,
             segment_count=len(segments),
             chunk_count=len(chunks),
+            processing_seconds=round(time.perf_counter() - _t0_total, 2),
         )
 
     # 실시간 녹음 세션에서 클라이언트가 전달한 segments로 transcript를 저장한다.
@@ -193,13 +218,41 @@ class TranscriptIngestionService:
         segments: list[SegmentCreate],
         domain_type: DomainType,
     ) -> list[ChunkCreate]:
+        _t = time.perf_counter()
         await self._repository.insert_segments(transcript_id, segments)
+        logger.info("[timing]   insert_segments: %.2fs", time.perf_counter() - _t)
+
+        _t = time.perf_counter()
         chunks = await self._build_chunks(domain_type, segments)
+        logger.info(
+            "[timing]   chunk_planning: %.2fs  (chunks=%d)",
+            time.perf_counter() - _t,
+            len(chunks),
+        )
+
+        _t = time.perf_counter()
         chunks = await self._enrich_chunks(chunks)
+        logger.info(
+            "[timing]   chunk_metadata: %.2fs  (chunks=%d, concurrency=%d)",
+            time.perf_counter() - _t,
+            len(chunks),
+            self._get_summary_concurrency(),
+        )
+
+        _t = time.perf_counter()
         await self._repository.insert_chunks(transcript_id, chunks)
+        logger.info("[timing]   insert_chunks: %.2fs", time.perf_counter() - _t)
+
+        _t = time.perf_counter()
         # search chunks indexing — 실패해도 transcript는 completed 상태 유지
         await self._build_and_index_search_chunks(transcript_id, segments)
+        logger.info("[timing]   search_index: %.2fs", time.perf_counter() - _t)
+
         return chunks
+
+    def _get_summary_concurrency(self) -> int:
+        from settings import get_settings
+        return get_settings().summary_concurrency
 
     # LLM planner로 맥락 경계를 먼저 정하고, plan을 chunks 테이블 입력 모델로 변환합니다.
     # planner 초기화나 호출, plan 변환이 실패하면 deterministic fallback chunk를 저장합니다.
