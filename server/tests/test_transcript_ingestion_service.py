@@ -4,6 +4,7 @@ import pytest
 from fastapi import HTTPException
 
 from schemas.rag import ChunkRow
+from services.chunks.chunk_builder import DeterministicFallbackChunkBuilder
 from services.chunks.context_chunk_planning_service import ContextChunkPlanGroup
 from services.audio.transcript_ingestion_service import TranscriptIngestionService
 from services.audio.transcription_service import TranscriptionResult, TranscriptionSegment
@@ -50,7 +51,7 @@ class FakeTranscriptionService:
         self._result = result
         self._exception = exception
 
-    async def transcribe_with_segments(self, file):
+    async def transcribe_with_segments(self, file, language="ko"):
         if self._exception:
             raise self._exception
         return self._result
@@ -124,8 +125,10 @@ async def test_ingest_upload_persists_transcript_result_and_segments() -> None:
 
     result = await service.ingest_upload(
         file=FakeUploadFile(),
-        domain_type="meeting",
-        title="주간 회의",
+        file_uri="upload://meeting.mp3",
+        file_name="meeting.mp3",
+        languages=["ko"],
+        domain_types=["general"],
         user_id=uuid4(),
     )
 
@@ -139,9 +142,9 @@ async def test_ingest_upload_persists_transcript_result_and_segments() -> None:
     assert [segment.segment_index for segment in repository.inserted_segments[0][1]] == [0, 1]
     assert repository.inserted_segments[0][1][0].raw_metadata["stt_model"] == "whisper-1"
     assert repository.inserted_chunks[0][0] == repository.transcript_id
-    assert repository.inserted_chunks[0][1][0].chunk_strategy == "meeting_context_plan_v1"
+    assert repository.inserted_chunks[0][1][0].chunk_strategy == "general_context_plan_v1"
     assert repository.inserted_chunks[0][1][0].metadata["planning_method"] == "llm"
-    assert planning_service.calls[0][0] == "meeting"
+    assert planning_service.calls[0][0] == "general"
     assert result.segment_count == 2
     assert result.chunk_count == 1
 
@@ -166,10 +169,16 @@ async def test_ingest_upload_enriches_chunks_before_insert() -> None:
         context_chunk_planning_service=planning_service,
     )
 
-    await service.ingest_upload(FakeUploadFile(), domain_type="meeting")
+    await service.ingest_upload(
+        FakeUploadFile(),
+        file_uri="upload://meeting.mp3",
+        file_name="meeting.mp3",
+        languages=["ko"],
+        domain_types=["general"],
+    )
 
     inserted_chunk = repository.inserted_chunks[0][1][0]
-    assert metadata_service.received_chunks[0][0].chunk_strategy == "meeting_context_plan_v1"
+    assert metadata_service.received_chunks[0][0].chunk_strategy == "general_context_plan_v1"
     assert inserted_chunk.segment_start_index == 0
     assert inserted_chunk.segment_end_index == 0
     assert inserted_chunk.topic == "출시 일정"
@@ -197,12 +206,18 @@ async def test_ingest_upload_uses_original_chunks_when_metadata_enrichment_fails
         context_chunk_planning_service=planning_service,
     )
 
-    result = await service.ingest_upload(FakeUploadFile(), domain_type="lecture")
+    result = await service.ingest_upload(
+        FakeUploadFile(),
+        file_uri="upload://lecture.mp3",
+        file_name="lecture.mp3",
+        languages=["ko"],
+        domain_types=["general"],
+    )
 
     inserted_chunk = repository.inserted_chunks[0][1][0]
     assert repository.updates[0][1].status == "completed"
     assert inserted_chunk.topic is None
-    assert inserted_chunk.chunk_strategy == "lecture_context_plan_v1"
+    assert inserted_chunk.chunk_strategy == "general_context_plan_v1"
     assert result.chunk_count == 1
 
 
@@ -234,7 +249,13 @@ async def test_ingest_upload_uses_llm_plan_to_insert_multiple_context_chunks() -
         context_chunk_planning_service=planning_service,
     )
 
-    result = await service.ingest_upload(FakeUploadFile(), domain_type="meeting")
+    result = await service.ingest_upload(
+        FakeUploadFile(),
+        file_uri="upload://meeting.mp3",
+        file_name="meeting.mp3",
+        languages=["ko"],
+        domain_types=["general"],
+    )
 
     inserted_chunks = repository.inserted_chunks[0][1]
     assert result.chunk_count == 2
@@ -261,19 +282,31 @@ async def test_ingest_upload_uses_fallback_chunks_when_planner_fails() -> None:
         )
     )
     planning_service = FakeContextChunkPlanningService(exception=RuntimeError("planner failed"))
+    # 180초 기준으로 2개 청크 분기를 강제 (domain "general"의 기본값 300초로는 250초가 1개 청크)
+    fallback_builder = DeterministicFallbackChunkBuilder(
+        meeting_max_seconds=180.0,
+        lecture_max_seconds=180.0,
+    )
     service = TranscriptIngestionService(
         repository,
         transcription_service,
         context_chunk_planning_service=planning_service,
+        fallback_chunk_builder=fallback_builder,
     )
 
-    result = await service.ingest_upload(FakeUploadFile(), domain_type="meeting")
+    result = await service.ingest_upload(
+        FakeUploadFile(),
+        file_uri="upload://meeting.mp3",
+        file_name="meeting.mp3",
+        languages=["ko"],
+        domain_types=["general"],
+    )
 
     inserted_chunks = repository.inserted_chunks[0][1]
     assert result.chunk_count == 2
     assert [chunk.segment_start_index for chunk in inserted_chunks] == [0, 2]
     assert [chunk.segment_end_index for chunk in inserted_chunks] == [1, 3]
-    assert inserted_chunks[0].chunk_strategy == "meeting_context_fallback_v1"
+    assert inserted_chunks[0].chunk_strategy == "general_context_fallback_v1"
     assert inserted_chunks[0].metadata["planning_method"] == "fallback"
 
 
@@ -286,7 +319,13 @@ async def test_ingest_upload_marks_transcript_failed_when_stt_fails() -> None:
     service = TranscriptIngestionService(repository, transcription_service)
 
     with pytest.raises(HTTPException):
-        await service.ingest_upload(FakeUploadFile(), domain_type="lecture")
+        await service.ingest_upload(
+            FakeUploadFile(),
+            file_uri="upload://lecture.mp3",
+            file_name="lecture.mp3",
+            languages=["ko"],
+            domain_types=["general"],
+        )
 
     assert repository.created[0].status == "processing"
     assert repository.updates[0][1].status == "failed"
@@ -378,7 +417,13 @@ async def test_ingest_creates_transcript_and_saves_chunks_and_search_chunks() ->
         embedding_service=embedding_service,
     )
 
-    result = await service.ingest_upload(FakeUploadFile(), domain_type="meeting")
+    result = await service.ingest_upload(
+        FakeUploadFile(),
+        file_uri="upload://meeting.mp3",
+        file_name="meeting.mp3",
+        languages=["ko"],
+        domain_types=["general"],
+    )
 
     # transcript 완료 상태 확인
     assert repository.updates[0][1].status == "completed"
@@ -424,7 +469,13 @@ async def test_ingest_continues_on_search_chunk_failure() -> None:
     )
 
     # ingest_upload는 예외 없이 완료되어야 함
-    result = await service.ingest_upload(FakeUploadFile(), domain_type="meeting")
+    result = await service.ingest_upload(
+        FakeUploadFile(),
+        file_uri="upload://meeting.mp3",
+        file_name="meeting.mp3",
+        languages=["ko"],
+        domain_types=["general"],
+    )
 
     # transcript는 completed 상태 유지
     assert repository.updates[0][1].status == "completed"

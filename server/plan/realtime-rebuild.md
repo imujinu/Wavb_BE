@@ -435,12 +435,7 @@ from routes.realtime import router as realtime_router
 app.include_router(realtime_router)
 ```
 
-- [ ] 커밋
 
-```bash
-git add server/routes/realtime.py server/main.py
-git commit -m "feat: realtime WebSocket route 재구현 (Deepgram Nova-3)"
-```
 
 ### Task 7: TranscriptIngestionService에 ingest_realtime_segments 추가
 
@@ -470,12 +465,7 @@ async def ingest_realtime_segments(
     ...
 ```
 
-- [ ] 커밋
 
-```bash
-git add server/services/audio/transcript_ingestion_service.py
-git commit -m "feat: TranscriptIngestionService에 ingest_realtime_segments 추가"
-```
 
 ---
 
