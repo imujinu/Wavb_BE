@@ -60,11 +60,9 @@ def decode_access_token(token: str, settings: Settings) -> CurrentUser:
     기능 요약: access JWT 토큰을 검증하고, 담긴 사용자 정보를 CurrentUser로 반환한다.
 
     기능 흐름:
-        1. jwt.decode()로 서명 및 만료 검증
-        2. 만료 시 401 예외 반환
-        3. 서명 오류 등 기타 JWT 오류 시 401 예외 반환
-        4. 토큰 타입이 "access"가 아닐 경우 401 예외 반환
-        5. 검증 완료 후 CurrentUser 반환
+        1. JWT 서명 및 만료 시간 검증 (실패 시 401 반환)
+        2. access 타입 토큰인지 확인 (불일치 시 401 반환)
+        3. 검증된 payload로 CurrentUser 생성 후 반환
 
     파라미터:
         token: 클라이언트로부터 전달받은 JWT access 토큰 문자열
@@ -98,11 +96,9 @@ def decode_refresh_token(token: str, settings: Settings) -> dict:
     기능 요약: refresh JWT 토큰을 검증하고, 담긴 클레임 dict를 반환한다.
 
     기능 흐름:
-        1. jwt.decode()로 서명 및 만료 검증
-        2. 만료 시 401 예외 반환
-        3. 서명 오류 등 기타 JWT 오류 시 401 예외 반환
-        4. 토큰 타입이 "refresh"가 아닐 경우 401 예외 반환
-        5. 검증 완료 후 payload dict 반환
+        1. JWT 서명 및 만료 시간 검증 (실패 시 401 반환)
+        2. refresh 타입 토큰인지 확인 (불일치 시 401 반환)
+        3. 검증된 payload dict 반환
 
     파라미터:
         token: 클라이언트로부터 전달받은 JWT refresh 토큰 문자열
