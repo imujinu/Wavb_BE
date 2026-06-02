@@ -7,6 +7,10 @@ from dependencies.auth import get_auth_service
 from schemas.auth import TokenResponse, UserCreate, UserLogin
 from services.auth_service import AuthService
 
+
+class RefreshRequest(BaseModel):
+    refresh_token: str
+
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
@@ -48,3 +52,16 @@ async def login(
     # 1. 서비스 레이어에 로그인 위임
     # 2. 발급된 TokenResponse를 그대로 클라이언트에 반환
     return await auth_service.login(email=body.email, password=body.password)
+
+
+@router.post(
+    "/refresh",
+    response_model=TokenResponse,
+    status_code=status.HTTP_200_OK,
+)
+def refresh(
+    body: RefreshRequest,
+    auth_service: AuthService = Depends(get_auth_service),
+) -> TokenResponse:
+    # 1. refresh_token 검증 후 새 access_token + refresh_token 쌍 발급 (rotation)
+    return auth_service.refresh_tokens(body.refresh_token)

@@ -1,9 +1,7 @@
 import json
 import logging
 from collections.abc import AsyncIterator
-from uuid import UUID
 
-import jwt
 from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect, status
 from fastapi import HTTPException
 
@@ -20,6 +18,7 @@ from schemas.realtime import (
 from services.realtime_transcription_service import RealtimeTranscriptionService
 from services.transcript_ingestion_service import TranscriptIngestionService
 from settings import get_settings
+from utils import jwt_utils
 
 logger = logging.getLogger(__name__)
 
@@ -32,34 +31,6 @@ async def get_rag_repository(
     yield RagRepository(connection)
 
 
-# WebSocket은 Authorization 헤더 설정이 불가하므로 쿼리 파라미터로 JWT를 받는다.
-# decode_access_token과 동일한 검증 로직을 직접 적용한다 (DB 조회 불필요).
-def _decode_ws_token(token: str) -> CurrentUser:
-    settings = get_settings()
-    try:
-        payload = jwt.decode(
-            token,
-            settings.jwt_secret_key,
-            algorithms=[settings.jwt_algorithm],
-        )
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="토큰이 만료되었습니다.",
-        )
-    except jwt.InvalidTokenError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="유효하지 않은 토큰입니다.",
-        )
-    if payload.get("type") != "access":
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="access 토큰이 아닙니다.",
-        )
-    return CurrentUser(user_id=UUID(payload["sub"]), email=payload["email"])
-
-
 @router.websocket("/realtime")
 async def realtime_transcription(
     websocket: WebSocket,
@@ -67,7 +38,7 @@ async def realtime_transcription(
 ) -> None:
     # 1. JWT 검증 — 실패 시 4001 코드로 종료
     try:
-        _decode_ws_token(token)
+        jwt_utils.decode_access_token(token, get_settings())
     except HTTPException:
         await websocket.close(code=4001)
         return

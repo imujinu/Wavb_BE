@@ -1,14 +1,13 @@
 """OAuth 제공자별 인가 코드 교환 및 JWT 발급 서비스"""
-from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 import httpx
-import jwt
 from fastapi import HTTPException
 
 from repositories.oauth_repository import OAuthRepository
 from schemas.auth import TokenResponse
 from settings import Settings, get_settings
+from utils import jwt_utils
 
 
 class OAuthService:
@@ -255,39 +254,14 @@ class OAuthService:
     def _issue_tokens(self, user_id: UUID, email: str) -> TokenResponse:
         """
         기능 요약: user_id와 email을 담은 access/refresh JWT를 생성하여 반환한다.
-        — AuthService._issue_tokens와 동일한 클레임 구조를 유지하여 토큰 검증 로직을 재사용할 수 있도록 한다.
+        — jwt_utils.create_token_pair에 위임하여 토큰 생성 로직을 단일 지점으로 통합한다.
 
         기능 흐름:
-            1. 현재 UTC 시각 기준으로 access_token 생성 (단기 만료)
-            2. 현재 UTC 시각 기준으로 refresh_token 생성 (장기 만료)
-            3. TokenResponse에 묶어 반환
+            1. jwt_utils.create_token_pair 호출로 access/refresh 토큰 쌍 생성 후 반환
 
         파라미터:
             user_id: 내부 사용자 UUID (예: UUID("a1b2c3..."))
             email: 사용자 이메일 (예: "user@gmail.com")
         """
-        now = datetime.now(tz=timezone.utc)
-        # 1. access_token 생성 — 단기 만료 토큰으로 API 접근 권한 부여
-        access_token = jwt.encode(
-            {
-                "sub": str(user_id),
-                "email": email,
-                "type": "access",
-                "exp": now + timedelta(minutes=self._settings.jwt_access_token_expire_minutes),
-            },
-            self._settings.jwt_secret_key,
-            algorithm=self._settings.jwt_algorithm,
-        )
-        # 2. refresh_token 생성 — 장기 만료 토큰으로 access_token 갱신에 사용
-        refresh_token = jwt.encode(
-            {
-                "sub": str(user_id),
-                "email": email,
-                "type": "refresh",
-                "exp": now + timedelta(days=self._settings.jwt_refresh_token_expire_days),
-            },
-            self._settings.jwt_secret_key,
-            algorithm=self._settings.jwt_algorithm,
-        )
-        # 3. 두 토큰을 묶어 반환
-        return TokenResponse(access_token=access_token, refresh_token=refresh_token)
+        # 1. jwt_utils를 통해 access/refresh 토큰 쌍 생성 후 반환
+        return jwt_utils.create_token_pair(user_id, email, self._settings)
