@@ -4,7 +4,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
-DomainType = Literal["meeting", "lecture"]
+DomainType = Literal["general", "legal", "medical", "science", "it", "religion"]
 TranscriptStatus = Literal["uploaded", "processing", "completed", "failed"]
 
 

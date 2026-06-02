@@ -1,6 +1,7 @@
 import logging
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from uuid import UUID
 
 from fastapi import HTTPException, UploadFile
@@ -76,17 +77,23 @@ class TranscriptIngestionService:
     async def ingest_upload(
         self,
         file: UploadFile,
-        domain_type: DomainType,
-        title: str | None = None,
+        file_uri: str,
+        file_name: str,
+        languages: list[str],
+        domain_types: list[str],
         user_id: UUID | None = None,
     ) -> TranscriptIngestionResult:
+        domain_type = self._resolve_domain_type(domain_types)
+        language = languages[0] if languages else "ko"
+        title = Path(file_name).stem
+
         transcript_id = await self._repository.create_transcript(
             TranscriptCreate(
                 user_id=user_id,
                 domain_type=domain_type,
                 title=title,
-                source_audio_uri=self._source_audio_uri(file),
-                original_filename=file.filename,
+                source_audio_uri=file_uri,
+                original_filename=file_name,
                 mime_type=file.content_type,
                 status="processing",
             )
@@ -96,7 +103,9 @@ class TranscriptIngestionService:
             _t0_total = time.perf_counter()
 
             _t0 = time.perf_counter()
-            transcription = await self._transcription_service.transcribe_with_segments(file)
+            transcription = await self._transcription_service.transcribe_with_segments(
+                file, language=language
+            )
             logger.info(
                 "[timing] STT: %.2fs  (duration=%.1fs, model=%s)",
                 time.perf_counter() - _t0,
@@ -352,9 +361,12 @@ class TranscriptIngestionService:
                 exc,
             )
 
-    def _source_audio_uri(self, file: UploadFile) -> str:
-        filename = file.filename or "audio"
-        return f"upload://{filename}"
+    def _resolve_domain_type(self, domain_types: list[str]) -> DomainType:
+        valid: set[DomainType] = {"general", "legal", "medical", "science", "it", "religion"}
+        for dt in domain_types:
+            if dt in valid:
+                return dt  # type: ignore[return-value]
+        return "general"
 
     def _to_segment_creates(
         self,

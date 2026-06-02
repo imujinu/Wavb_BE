@@ -60,12 +60,14 @@ class TranscriptionService:
         self._chunk_overlap_seconds = settings.audio_chunk_overlap_seconds
         self._target_chunk_max_mb = settings.audio_target_chunk_max_mb
 
-    async def transcribe(self, file: UploadFile) -> str:
-        result = await self.transcribe_with_segments(file)
+    async def transcribe(self, file: UploadFile, language: str = "ko") -> str:
+        result = await self.transcribe_with_segments(file, language=language)
         return result.text
 
     # Transcribe audio and keep timing data for transcript/segment persistence.
-    async def transcribe_with_segments(self, file: UploadFile) -> TranscriptionResult:
+    async def transcribe_with_segments(
+        self, file: UploadFile, language: str = "ko"
+    ) -> TranscriptionResult:
         suffix = Path(file.filename or "").suffix or ".audio"
 
         try:
@@ -90,7 +92,7 @@ class TranscriptionService:
                     plans=chunk_plans,
                     target_max_mb=self._target_chunk_max_mb,
                 )
-                transcriptions = await self._collect_chunk_transcriptions(chunks)
+                transcriptions = await self._collect_chunk_transcriptions(chunks, language)
         except HTTPException:
             raise
         except APIError as exc:
@@ -121,13 +123,16 @@ class TranscriptionService:
     async def _collect_chunk_transcriptions(
         self,
         chunks: list[AudioChunk],
+        language: str = "ko",
     ) -> list[ChunkTranscription]:
         if not chunks:
             return []
 
         semaphore = asyncio.Semaphore(self._transcription_concurrency)
         tasks = [
-            asyncio.create_task(self._transcribe_chunk_with_retry(chunk, semaphore))
+            asyncio.create_task(
+                self._transcribe_chunk_with_retry(chunk, semaphore, language)
+            )
             for chunk in chunks
         ]
 
@@ -143,13 +148,14 @@ class TranscriptionService:
         self,
         chunk: AudioChunk,
         semaphore: asyncio.Semaphore,
+        language: str = "ko",
     ) -> ChunkTranscription:
         last_exception: Exception | None = None
 
         for _ in range(2):
             try:
                 async with semaphore:
-                    response = await self._request_chunk_transcription(chunk)
+                    response = await self._request_chunk_transcription(chunk, language)
                 return self._parse_chunk_transcription(chunk, response)
             except Exception as exc:
                 last_exception = exc
@@ -159,12 +165,14 @@ class TranscriptionService:
             detail=f"Audio transcription provider failed for chunk {chunk.index}.",
         ) from last_exception
 
-    async def _request_chunk_transcription(self, chunk: AudioChunk) -> Any:
+    async def _request_chunk_transcription(
+        self, chunk: AudioChunk, language: str = "ko"
+    ) -> Any:
         with chunk.path.open("rb") as audio_file:
             return await self._client.audio.transcriptions.create(
                 model=self._model,
                 file=audio_file,
-                language="ko",
+                language=language,
                 response_format="verbose_json",
             )
 

@@ -11,7 +11,7 @@ from db.connection import DatabaseConnection, get_connection
 from dependencies.auth import get_current_user
 from repositories.rag_repository import RagRepository
 from schemas.auth import CurrentUser
-from schemas.rag import DomainType, SummaryDocumentCreate
+from schemas.rag import SummaryDocumentCreate
 from settings import get_settings
 from services.pdf_templates import TemplateSpec, get_template, list_templates
 from services.summary_pdf_service import SummaryPdfService
@@ -24,6 +24,9 @@ from services.transcription_service import TranscriptionService
 router = APIRouter(prefix="/audio", tags=["audio"])
 
 ALLOWED_EXTENSIONS = {".m4a", ".mp3", ".wav", ".webm"}
+ALLOWED_DOMAIN_TYPES = {"general", "legal", "medical", "science", "it", "religion"}
+# 허용 언어 조합: 한국어 단독, 영어 단독, 한국어+영어 혼합만 허용
+ALLOWED_LANGUAGE_SETS = [{"ko"}, {"en"}, {"ko", "en"}]
 
 
 class AudioSummaryResponse(BaseModel):
@@ -54,6 +57,23 @@ async def get_rag_repository(
     connection: DatabaseConnection = Depends(get_connection),
 ) -> AsyncIterator[RagRepository]:
     yield RagRepository(connection)
+
+
+def validate_languages(languages: list[str]) -> None:
+    if set(languages) not in ALLOWED_LANGUAGE_SETS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="languages는 ['ko'], ['en'], ['ko', 'en'] 조합만 허용됩니다.",
+        )
+
+
+def validate_domain_type(domain_type: str) -> None:
+    if domain_type not in ALLOWED_DOMAIN_TYPES:
+        allowed = ", ".join(sorted(ALLOWED_DOMAIN_TYPES))
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"유효하지 않은 domain_type입니다. 허용 값: {allowed}",
+        )
 
 
 def validate_audio_file(file: UploadFile) -> None:
@@ -89,20 +109,26 @@ async def summarize_audio(file: UploadFile = File(...)) -> AudioSummaryResponse:
 @router.post("/transcripts", response_model=AudioTranscriptResponse)
 async def create_audio_transcript(
     file: UploadFile = File(...),
-    domain_type: DomainType = Form("meeting"),
-    title: str | None = Form(None),
+    file_uri: str = Form(...),
+    file_name: str = Form(...),
+    languages: list[str] = Form(...),
+    domain_type: str = Form(...),
     # user_id는 클라이언트 입력 대신 JWT 토큰에서 추출한 인증 사용자로 대체
     current_user: CurrentUser = Depends(get_current_user),
     repository: RagRepository = Depends(get_rag_repository),
 ) -> AudioTranscriptResponse:
     validate_audio_file(file)
+    validate_languages(languages)
+    validate_domain_type(domain_type)
 
     ingestion_service = TranscriptIngestionService(repository)
     # 1. 인증된 사용자의 user_id를 토큰에서 주입하여 인제스션 실행
     result = await ingestion_service.ingest_upload(
         file=file,
-        domain_type=domain_type,
-        title=title,
+        file_uri=file_uri,
+        file_name=file_name,
+        languages=languages,
+        domain_types=[domain_type],
         user_id=current_user.user_id,
     )
     return AudioTranscriptResponse(
