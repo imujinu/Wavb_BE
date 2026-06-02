@@ -1,7 +1,6 @@
 import json
 import logging
 from collections.abc import AsyncIterator
-from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect, status
 from fastapi import HTTPException
