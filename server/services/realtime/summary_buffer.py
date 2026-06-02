@@ -19,14 +19,20 @@ class RealtimeSummaryBuffer:
 
     def add(self, text: str) -> None:
         """
-        기능 요약: 전사 텍스트를 버퍼에 누적한다. interim/final 구분 없이 호출한다.
+        기능 요약: is_final=True 텍스트만 버퍼에 누적한다.
+
+        왜 is_final만 누적하는가:
+            Deepgram interim 결과는 누적이 아니라 대체(replacement)다.
+            같은 발화에 대해 "안녕" → "안녕하세요"(final)처럼 오므로,
+            interim을 버퍼에 쌓으면 중복 텍스트로 요약이 망가진다.
+            호출자(routes/realtime.py)는 is_final=True일 때만 이 메서드를 호출해야 한다.
 
         기능 흐름:
             1. 공백 제거 후 빈 문자열이면 무시 (노이즈 방지)
             2. 텍스트를 세그먼트 목록에 추가
 
         파라미터:
-            text: Deepgram transcript 텍스트 (interim 또는 final)
+            text: Deepgram is_final=True transcript 텍스트
         """
         # 1. 공백 제거 후 빈 문자열이면 무시 (공백·빈 전사 결과가 버퍼에 쌓이는 것 방지)
         text = text.strip()

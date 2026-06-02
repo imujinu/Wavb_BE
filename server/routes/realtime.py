@@ -68,24 +68,30 @@ async def realtime_connect(websocket: WebSocket, token: str) -> None:
         """Deepgram → 모바일: 전사 이벤트를 JSON으로 전달하고, 임계값 도달 시 요약을 생성한다."""
         buffer = RealtimeSummaryBuffer(threshold_seconds=25.0)
         segment_index = 0
+        # GC 방지용 강한 참조: 이벤트 루프는 태스크에 약한 참조만 유지하므로
+        # GC가 실행되면 완료 전에 태스크가 소멸될 수 있다. set으로 강한 참조를 유지한다.
+        _background_tasks: set[asyncio.Task] = set()
 
         try:
             async for event in provider.transcript_events():
                 # 1. 전사 이벤트를 프론트에 즉시 전달
                 await websocket.send_json(asdict(event))
 
-                # 2. 텍스트를 버퍼에 누적 (interim/final 모두)
-                if event.text:
-                    buffer.add(event.text)
-
-                # 3. is_final 시점에만 임계값 체크
-                # 왜 is_final 시점인가: 확정된 결과가 도달했을 때 구간 완료를 판단한다.
-                # interim 도중 flush하면 미완성 문장이 요약에 포함될 수 있다.
-                if event.is_final and buffer.should_flush():
-                    asyncio.create_task(
-                        _send_summary(websocket, buffer, segment_index)
-                    )
-                    segment_index += 1
+                # 2. is_final 시점에만 버퍼에 누적하고 임계값을 체크한다.
+                # Deepgram interim 결과는 누적이 아니라 대체(replacement)다.
+                # 같은 발화에 대해 "안녕" → "안녕하세요"(final)처럼 오므로,
+                # interim을 버퍼에 쌓으면 중복 텍스트로 요약이 망가진다.
+                if event.is_final:
+                    if event.text:
+                        buffer.add(event.text)
+                    if buffer.should_flush():
+                        task = asyncio.create_task(
+                            _send_summary(websocket, buffer, segment_index)
+                        )
+                        _background_tasks.add(task)
+                        # 태스크 완료 시 set에서 제거하여 메모리 누수 방지
+                        task.add_done_callback(_background_tasks.discard)
+                        segment_index += 1
         except WebSocketDisconnect:
             pass
         except Exception:
@@ -143,11 +149,18 @@ async def _send_summary(
             segment_index=segment_index,
         )
         await websocket.send_json(event.model_dump())
+    except (WebSocketDisconnect, RuntimeError):
+        # 클라이언트가 이미 연결을 끊은 경우 — 정상 케이스, 무시
+        return
     except Exception:
-        await websocket.send_json({
-            "type": "error",
-            "message": "요약 생성에 실패했습니다.",
-        })
+        try:
+            await websocket.send_json({
+                "type": "error",
+                "message": "요약 생성에 실패했습니다.",
+            })
+        except (WebSocketDisconnect, RuntimeError):
+            # 에러 전송 중에도 연결이 끊긴 경우 — 정상 케이스, 무시
+            return
 
 
 @router.post("/transcripts/realtime", response_model=RealtimeSaveResponse)
