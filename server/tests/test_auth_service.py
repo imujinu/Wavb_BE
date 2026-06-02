@@ -111,11 +111,14 @@ async def test_login_wrong_password_raises_401() -> None:
 @pytest.mark.asyncio
 async def test_decode_access_token_returns_current_user() -> None:
     # 발급된 access_token을 디코딩하면 올바른 CurrentUser를 반환하는지 검증
+    from utils import jwt_utils
+    from settings import get_settings
+
     service = make_service()
     await service.register("홍길동", "hong@example.com", "pass1234")
     token_response = await service.login("hong@example.com", "pass1234")
 
-    current_user = service.decode_access_token(token_response.access_token)
+    current_user = jwt_utils.decode_access_token(token_response.access_token, get_settings())
 
     assert current_user.email == "hong@example.com"
     assert isinstance(current_user.user_id, UUID)
@@ -124,10 +127,13 @@ async def test_decode_access_token_returns_current_user() -> None:
 def test_decode_access_token_with_refresh_token_raises_401() -> None:
     # refresh_token을 access_token 자리에 사용하면 HTTP 401이 발생하는지 검증
     import jwt
+    from utils import jwt_utils
     from settings import get_settings
     from datetime import datetime, timedelta, timezone
+    from unittest.mock import MagicMock
 
     settings = get_settings()
+    secret = settings.jwt_secret_key or "test-secret"
     now = datetime.now(tz=timezone.utc)
     # refresh 타입 토큰 직접 생성
     refresh_token = jwt.encode(
@@ -137,50 +143,32 @@ def test_decode_access_token_with_refresh_token_raises_401() -> None:
             "type": "refresh",
             "exp": now + timedelta(days=30),
         },
-        settings.jwt_secret_key or "test-secret",
+        secret,
         algorithm=settings.jwt_algorithm,
     )
 
-    service = AuthService.__new__(AuthService)
-    service._repository = FakeAuthRepository()
-    from settings import get_settings as _gs
-    service._settings = _gs()
-    # JWT_SECRET_KEY가 비어있으면 동일 키로 검증하기 위해 직접 패치
-    service._settings = type(service._settings).model_validate(
-        {**service._settings.model_dump(), "jwt_secret_key": settings.jwt_secret_key or "test-secret"}
-    ) if settings.jwt_secret_key else _patch_secret(service, "test-secret", refresh_token)
+    # decode_access_token이 사용할 설정 객체 준비 (시크릿 키 일치 보장)
+    mock_settings = MagicMock()
+    mock_settings.jwt_secret_key = secret
+    mock_settings.jwt_algorithm = settings.jwt_algorithm
 
     with pytest.raises(HTTPException) as exc_info:
-        service.decode_access_token(refresh_token)
+        jwt_utils.decode_access_token(refresh_token, mock_settings)
 
     assert exc_info.value.status_code == 401
 
-
-def _patch_secret(service: AuthService, secret: str, token: str):
-    """테스트용 시크릿 키 패치 헬퍼."""
-    import jwt
-    from datetime import datetime, timedelta, timezone
-    from unittest.mock import MagicMock
-
-    mock_settings = MagicMock()
-    mock_settings.jwt_secret_key = secret
-    mock_settings.jwt_algorithm = "HS256"
-    service._settings = mock_settings
-    return mock_settings
 
 
 def test_decode_access_token_invalid_token_raises_401() -> None:
     # 완전히 잘못된 토큰 문자열에 대해 HTTP 401이 발생하는지 검증
     from unittest.mock import MagicMock
+    from utils import jwt_utils
 
-    service = AuthService.__new__(AuthService)
-    service._repository = FakeAuthRepository()
     mock_settings = MagicMock()
     mock_settings.jwt_secret_key = "some-secret"
     mock_settings.jwt_algorithm = "HS256"
-    service._settings = mock_settings
 
     with pytest.raises(HTTPException) as exc_info:
-        service.decode_access_token("not.a.valid.token")
+        jwt_utils.decode_access_token("not.a.valid.token", mock_settings)
 
     assert exc_info.value.status_code == 401
