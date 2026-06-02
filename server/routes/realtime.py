@@ -8,9 +8,10 @@ from db.connection import DatabaseConnection, get_connection
 from dependencies.auth import get_current_user
 from repositories.rag_repository import RagRepository
 from schemas.auth import CurrentUser
-from schemas.realtime import RealtimeSaveRequest, RealtimeSaveResponse
+from schemas.realtime import RealtimeSaveRequest, RealtimeSaveResponse, RealtimeSummaryEvent
 from services.audio.transcript_ingestion_service import TranscriptIngestionService
 from services.realtime.provider_factory import create_stt_provider
+from services.realtime.summary_buffer import RealtimeSummaryBuffer
 
 router = APIRouter(prefix="/audio", tags=["realtime"])
 
@@ -64,12 +65,34 @@ async def realtime_connect(websocket: WebSocket, token: str) -> None:
             await provider.disconnect()
 
     async def forward_transcripts() -> None:
-        """Deepgram → 모바일: 전사 이벤트를 JSON으로 전달."""
+        """Deepgram → 모바일: 전사 이벤트를 JSON으로 전달하고, 임계값 도달 시 요약을 생성한다."""
+        buffer = RealtimeSummaryBuffer(threshold_seconds=25.0)
+        segment_index = 0
+
         try:
             async for event in provider.transcript_events():
+                # 1. 전사 이벤트를 프론트에 즉시 전달
                 await websocket.send_json(asdict(event))
+
+                # 2. 텍스트를 버퍼에 누적 (interim/final 모두)
+                if event.text:
+                    buffer.add(event.text)
+
+                # 3. is_final 시점에만 임계값 체크
+                # 왜 is_final 시점인가: 확정된 결과가 도달했을 때 구간 완료를 판단한다.
+                # interim 도중 flush하면 미완성 문장이 요약에 포함될 수 있다.
+                if event.is_final and buffer.should_flush():
+                    asyncio.create_task(
+                        _send_summary(websocket, buffer, segment_index)
+                    )
+                    segment_index += 1
         except WebSocketDisconnect:
             pass
+        except Exception:
+            await websocket.send_json({
+                "type": "error",
+                "message": "전사 서비스에 연결할 수 없습니다.",
+            })
 
     await asyncio.gather(forward_audio(), forward_transcripts())
 
@@ -91,6 +114,40 @@ async def _validate_ws_token(token: str) -> dict:
         return payload
     except JWTError:
         raise ValueError("유효하지 않은 토큰")
+
+
+async def _send_summary(
+    websocket: WebSocket,
+    buffer: RealtimeSummaryBuffer,
+    segment_index: int,
+) -> None:
+    """
+    기능 요약: 버퍼를 flush하고 summary 이벤트를 WebSocket으로 전송한다.
+    — forward_transcripts()를 블로킹하지 않도록 별도 태스크로 실행된다.
+
+    기능 흐름:
+        1. buffer.flush_with_summary()로 GPT 요약 생성 및 버퍼 초기화
+        2. RealtimeSummaryEvent 생성 후 JSON 직렬화하여 전송
+        3. 실패 시 에러 메시지 전송 (스트림 중단 없음)
+
+    파라미터:
+        websocket: 클라이언트 WebSocket 연결
+        buffer: 요약 대상 버퍼 인스턴스
+        segment_index: 몇 번째 구간인지 (0부터)
+    """
+    try:
+        full_text, summary = await buffer.flush_with_summary()
+        event = RealtimeSummaryEvent(
+            summary=summary,
+            full_text=full_text,
+            segment_index=segment_index,
+        )
+        await websocket.send_json(event.model_dump())
+    except Exception:
+        await websocket.send_json({
+            "type": "error",
+            "message": "요약 생성에 실패했습니다.",
+        })
 
 
 @router.post("/transcripts/realtime", response_model=RealtimeSaveResponse)
