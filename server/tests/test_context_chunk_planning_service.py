@@ -1,7 +1,7 @@
 import pytest
 
 from schemas.rag import SegmentCreate
-from services.context_chunk_planning_service import (
+from services.chunks.context_chunk_planning_service import (
     ContextChunkPlanGroup,
     ContextChunkPlanningService,
 )

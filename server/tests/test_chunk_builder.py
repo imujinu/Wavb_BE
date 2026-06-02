@@ -1,12 +1,12 @@
 from schemas.rag import SegmentCreate
-from services.chunk_builder import (
+from services.chunks.chunk_builder import (
     ContextPlannedChunkBuilder,
     DeterministicFallbackChunkBuilder,
     LectureChunkBuilder,
     MeetingChunkBuilder,
     get_chunk_builder,
 )
-from services.context_chunk_planning_service import ContextChunkPlanGroup
+from services.chunks.context_chunk_planning_service import ContextChunkPlanGroup
 
 
 def make_segment(

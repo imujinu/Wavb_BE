@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID, uuid4
 import pytest
 from fastapi import HTTPException
-from services.oauth_service import OAuthService
+from services.auth.oauth_service import OAuthService
 from schemas.auth import TokenResponse
 
 

@@ -10,10 +10,10 @@ from fastapi import APIRouter, Depends
 from db.connection import DatabaseConnection, get_connection
 from repositories.rag_repository import RagRepository
 from schemas.rag import RagQueryRequest, RagQueryResponse
-from services.embedding_service import EmbeddingService
-from services.morpheme_service import MorphemeService
-from services.rag_query_service import RagQueryService
-from services.rag_response_service import RagResponseService
+from services.rag.embedding_service import EmbeddingService
+from services.rag.morpheme_service import MorphemeService
+from services.rag.rag_query_service import RagQueryService
+from services.rag.rag_response_service import RagResponseService
 
 
 router = APIRouter(prefix="/rag", tags=["rag"])

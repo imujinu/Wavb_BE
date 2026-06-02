@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from services.summary_service import SummaryService
+from services.summary.summary_service import SummaryService
 
 
 class FakeCompletions:

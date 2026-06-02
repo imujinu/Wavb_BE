@@ -15,16 +15,16 @@ from schemas.rag import (
     TranscriptCreate,
     TranscriptResultUpdate,
 )
-from services.chunk_builder import (
+from services.chunks.chunk_builder import (
     ContextPlannedChunkBuilder,
     DeterministicFallbackChunkBuilder,
 )
-from services.context_chunk_planning_service import ContextChunkPlanningService
-from services.chunk_metadata_service import ChunkMetadataService
-from services.embedding_service import EmbeddingService
-from services.morpheme_service import MorphemeService
-from services.search_chunk_builder import SearchChunkBuilder
-from services.transcription_service import TranscriptionService, TranscriptionSegment
+from services.chunks.context_chunk_planning_service import ContextChunkPlanningService
+from services.chunks.chunk_metadata_service import ChunkMetadataService
+from services.rag.embedding_service import EmbeddingService
+from services.rag.morpheme_service import MorphemeService
+from services.chunks.search_chunk_builder import SearchChunkBuilder
+from services.audio.transcription_service import TranscriptionService, TranscriptionSegment
 from settings import get_settings
 
 logger = logging.getLogger(__name__)

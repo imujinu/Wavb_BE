@@ -3,7 +3,7 @@ import subprocess
 import pytest
 from fastapi import HTTPException
 
-from services.audio_chunking import (
+from services.audio.audio_chunking import (
     AudioChunkingService,
     build_chunk_plan,
     calculate_chunk_seconds,

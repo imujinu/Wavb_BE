@@ -5,7 +5,7 @@ from pydantic import BaseModel
 
 from dependencies.auth import get_auth_service
 from schemas.auth import TokenResponse, UserCreate, UserLogin
-from services.auth_service import AuthService
+from services.auth.auth_service import AuthService
 
 
 class RefreshRequest(BaseModel):

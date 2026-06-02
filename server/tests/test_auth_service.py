@@ -8,7 +8,7 @@ from uuid import UUID, uuid4
 import pytest
 from fastapi import HTTPException
 
-from services.auth_service import AuthService
+from services.auth.auth_service import AuthService
 
 
 # --- Fake Repository ---

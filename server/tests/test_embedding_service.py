@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from openai import OpenAIError
 
-from services.embedding_service import EmbeddingService, EmbeddingServiceError
+from services.rag.embedding_service import EmbeddingService, EmbeddingServiceError
 
 
 # --- 헬퍼: 임베딩 응답 객체 생성 ---

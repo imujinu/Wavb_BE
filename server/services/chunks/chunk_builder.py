@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from math import ceil
 
 from schemas.rag import ChunkCreate, DomainType, SegmentCreate
-from services.context_chunk_planning_service import ContextChunkPlanGroup
+from services.chunks.context_chunk_planning_service import ContextChunkPlanGroup
 
 
 class TranscriptChunkBuilder(ABC):

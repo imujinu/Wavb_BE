@@ -10,7 +10,7 @@ from schemas.rag import ChunkRow, SearchChunkCreate, SegmentCreate
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from services.morpheme_service import MorphemeService
+    from services.rag.morpheme_service import MorphemeService
 
 
 class SearchChunkBuilder:

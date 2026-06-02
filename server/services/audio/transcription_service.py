@@ -7,8 +7,8 @@ from typing import Any
 from fastapi import HTTPException, UploadFile, status
 from openai import APIError, AsyncOpenAI
 
-from services.audio_analysis_service import AudioAnalysisService
-from services.audio_chunking import (
+from services.audio.audio_analysis_service import AudioAnalysisService
+from services.audio.audio_chunking import (
     AudioChunk,
     AudioChunkingService,
     build_chunk_plan,

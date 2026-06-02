@@ -6,7 +6,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from db.connection import DatabaseConnection, get_connection
 from repositories.auth_repository import AuthRepository
 from schemas.auth import CurrentUser
-from services.auth_service import AuthService
+from services.auth.auth_service import AuthService
 from settings import get_settings
 from utils import jwt_utils
 
@@ -37,7 +37,7 @@ async def get_oauth_service(
 ):
     # 순환 임포트 방지를 위해 함수 내부에서 로컬 임포트 사용
     from repositories.oauth_repository import OAuthRepository
-    from services.oauth_service import OAuthService
+    from services.auth.oauth_service import OAuthService
 
     # 1. DB 커넥션을 OAuthRepository에 주입
     # 2. OAuthRepository를 OAuthService에 주입하여 요청 범위 인스턴스 생성

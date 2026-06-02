@@ -13,12 +13,12 @@ from repositories.rag_repository import RagRepository
 from schemas.auth import CurrentUser
 from schemas.rag import SummaryDocumentCreate
 from settings import get_settings
-from services.pdf_templates import TemplateSpec, get_template, list_templates
-from services.summary_pdf_service import SummaryPdfService
-from services.summary_service import SummaryService
-from services.templated_summary_service import TemplatedSummaryService
-from services.transcript_ingestion_service import TranscriptIngestionService
-from services.transcription_service import TranscriptionService
+from services.summary.pdf_templates import TemplateSpec, get_template, list_templates
+from services.summary.summary_pdf_service import SummaryPdfService
+from services.summary.summary_service import SummaryService
+from services.summary.templated_summary_service import TemplatedSummaryService
+from services.audio.transcript_ingestion_service import TranscriptIngestionService
+from services.audio.transcription_service import TranscriptionService
 
 
 router = APIRouter(prefix="/audio", tags=["audio"])

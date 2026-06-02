@@ -13,7 +13,7 @@ from fastapi import HTTPException, status
 from fpdf import FPDF
 from fpdf.enums import XPos, YPos
 
-from services.pdf_templates import TemplateSpec
+from services.summary.pdf_templates import TemplateSpec
 from settings import get_settings
 
 

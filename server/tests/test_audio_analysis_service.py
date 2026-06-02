@@ -3,7 +3,7 @@ import subprocess
 import pytest
 from fastapi import HTTPException
 
-from services.audio_analysis_service import AudioAnalysisService
+from services.audio.audio_analysis_service import AudioAnalysisService
 
 
 def test_parse_duration_seconds() -> None:

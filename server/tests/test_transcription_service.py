@@ -4,8 +4,8 @@ from pathlib import Path
 import pytest
 from fastapi import HTTPException
 
-from services.audio_chunking import AudioChunk
-from services.transcription_service import TranscriptionService
+from services.audio.audio_chunking import AudioChunk
+from services.audio.transcription_service import TranscriptionService
 
 
 class FakeTranscriptions:

@@ -5,8 +5,8 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 
-from services.pdf_templates import get_template
-from services.templated_summary_service import TemplatedSummaryService
+from services.summary.pdf_templates import get_template
+from services.summary.templated_summary_service import TemplatedSummaryService
 
 
 # test_summary_service.py와 동일한 Fake OpenAI client 패턴을 재사용한다.

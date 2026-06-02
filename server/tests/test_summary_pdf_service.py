@@ -3,8 +3,8 @@ from pathlib import Path
 import pytest
 from fastapi import HTTPException
 
-from services.pdf_templates import get_template
-from services.summary_pdf_service import SummaryPdfService
+from services.summary.pdf_templates import get_template
+from services.summary.summary_pdf_service import SummaryPdfService
 
 
 # 번들 글꼴 경로 — 테스트는 실제 동봉 글꼴로 한글 렌더를 검증한다.

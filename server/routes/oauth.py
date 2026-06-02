@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends
 
 from dependencies.auth import get_oauth_service
 from schemas.auth import OAuthLoginRequest, OAuthNaverLoginRequest, TokenResponse
-from services.oauth_service import OAuthService
+from services.auth.oauth_service import OAuthService
 
 router = APIRouter(prefix="/auth/oauth", tags=["oauth"])
 

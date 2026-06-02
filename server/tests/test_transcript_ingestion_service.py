@@ -4,9 +4,9 @@ import pytest
 from fastapi import HTTPException
 
 from schemas.rag import ChunkRow
-from services.context_chunk_planning_service import ContextChunkPlanGroup
-from services.transcript_ingestion_service import TranscriptIngestionService
-from services.transcription_service import TranscriptionResult, TranscriptionSegment
+from services.chunks.context_chunk_planning_service import ContextChunkPlanGroup
+from services.audio.transcript_ingestion_service import TranscriptIngestionService
+from services.audio.transcription_service import TranscriptionResult, TranscriptionSegment
 
 
 class FakeRepository:

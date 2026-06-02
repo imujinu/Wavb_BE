@@ -12,7 +12,7 @@ import json
 from fastapi import HTTPException, status
 from openai import APIError, AsyncOpenAI
 
-from services.pdf_templates import TemplateSpec
+from services.summary.pdf_templates import TemplateSpec
 from settings import get_settings
 
 

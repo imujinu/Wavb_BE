@@ -1,7 +1,7 @@
 from uuid import uuid4
 
 from schemas.rag import ChunkRow, SearchChunkCreate, SegmentCreate
-from services.search_chunk_builder import SearchChunkBuilder
+from services.chunks.search_chunk_builder import SearchChunkBuilder
 
 
 # 테스트용 SegmentCreate를 간결하게 생성하는 헬퍼.

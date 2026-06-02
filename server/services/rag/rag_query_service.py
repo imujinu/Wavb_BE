@@ -7,8 +7,8 @@ from uuid import UUID
 
 from repositories.rag_repository import RagRepository
 from schemas.rag import ParentChunkResult, SearchChunkHit
-from services.embedding_service import EmbeddingService
-from services.morpheme_service import MorphemeService
+from services.rag.embedding_service import EmbeddingService
+from services.rag.morpheme_service import MorphemeService
 
 
 class RagQueryService:

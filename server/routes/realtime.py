@@ -16,7 +16,7 @@ from schemas.realtime import (
     RealtimeTranscriptEvent,
 )
 from services.realtime_transcription_service import RealtimeTranscriptionService
-from services.transcript_ingestion_service import TranscriptIngestionService
+from services.audio.transcript_ingestion_service import TranscriptIngestionService
 from settings import get_settings
 from utils import jwt_utils
 

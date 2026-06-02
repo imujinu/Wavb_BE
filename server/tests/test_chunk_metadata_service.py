@@ -3,7 +3,7 @@ from types import SimpleNamespace
 import pytest
 
 from schemas.rag import ChunkCreate
-from services.chunk_metadata_service import ChunkMetadataService
+from services.chunks.chunk_metadata_service import ChunkMetadataService
 
 
 class FakeCompletions:
