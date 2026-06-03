@@ -98,3 +98,66 @@ def test_split_text_prefers_boundaries() -> None:
     chunks = service._split_text("alpha beta\ngamma delta", max_chars=12)
 
     assert chunks == ["alpha beta", "gamma delta"]
+
+
+@pytest.mark.asyncio
+async def test_summarize_with_keywords_parses_json() -> None:
+    async def handler(**kwargs):
+        # 키워드 추출 호출은 JSON 모드를 요청한다.
+        assert kwargs.get("response_format") == {"type": "json_object"}
+        return make_response('{"summary": "요약문", "keywords": ["세포", "분열", "염색체"]}')
+
+    service = make_service(handler)
+
+    summary, keywords = await service.summarize_with_keywords("세포 분열 강의 내용")
+
+    assert summary == "요약문"
+    assert keywords == ["세포", "분열", "염색체"]
+
+
+@pytest.mark.asyncio
+async def test_summarize_with_keywords_trims_and_caps_keywords() -> None:
+    async def handler(**kwargs):
+        # 7개 + 빈 문자열/공백 포함 — 빈 값 제거 후 최대 6개로 잘려야 한다.
+        return make_response(
+            '{"summary": "요약", "keywords": ["a","b","c","d","e","f","g","", "  "]}'
+        )
+
+    service = make_service(handler)
+
+    _, keywords = await service.summarize_with_keywords("긴 텍스트")
+
+    assert keywords == ["a", "b", "c", "d", "e", "f"]
+
+
+@pytest.mark.asyncio
+async def test_summarize_with_keywords_falls_back_on_invalid_json() -> None:
+    calls = []
+
+    async def handler(**kwargs):
+        calls.append(kwargs)
+        # 첫 호출(키워드, response_format 있음)은 깨진 JSON → 파싱 실패 유도
+        if kwargs.get("response_format"):
+            return make_response("not json at all {")
+        # 폴백 summarize() 호출은 일반 요약 텍스트 반환
+        return make_response("폴백 요약")
+
+    service = make_service(handler)
+
+    summary, keywords = await service.summarize_with_keywords("어떤 전사 텍스트")
+
+    # 키워드 추출 실패해도 요약은 폴백으로 보장, keywords는 빈 배열
+    assert summary == "폴백 요약"
+    assert keywords == []
+    assert len(calls) == 2  # 키워드 시도 1 + 폴백 summarize 1
+
+
+@pytest.mark.asyncio
+async def test_summarize_with_keywords_rejects_empty() -> None:
+    async def handler(**kwargs):  # 호출되면 안 됨
+        raise AssertionError("빈 입력에서는 LLM을 호출하지 않아야 한다")
+
+    service = make_service(handler)
+
+    with pytest.raises(Exception):
+        await service.summarize_with_keywords("   ")

@@ -40,3 +40,8 @@ class RealtimeSummaryEvent(BaseModel):
     summary: str        # GPT 요약문
     full_text: str      # 원문 전체 (프론트 "전체 보기" 버튼용)
     segment_index: int  # 몇 번째 구간인지 (0부터, 프론트 렌더링 매칭용)
+    # 이 요약이 덮는 transcript(final) 범위 — FE가 해당 범위의 실시간 라인만 정확히 collapse한다.
+    # 누적된 final이 없었던 빈 구간이면 둘 다 -1.
+    start_final_index: int = -1  # 첫 final_index (포함)
+    end_final_index: int = -1    # 마지막 final_index (포함)
+    keywords: list[str] = []     # 요약문 기반 핵심 키워드 (3~6개)
