@@ -13,6 +13,8 @@ class Settings(BaseSettings):
         "text-embedding-3-small",
         alias="OPENAI_EMBEDDING_MODEL",
     )
+    tavily_api_key: str = Field("", alias="TAVILY_API_KEY")
+    web_search_max_results: int = Field(5, alias="WEB_SEARCH_MAX_RESULTS")
     audio_transcription_concurrency: int = Field(
         3,
         alias="AUDIO_TRANSCRIPTION_CONCURRENCY",

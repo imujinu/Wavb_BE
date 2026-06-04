@@ -116,6 +116,8 @@ class RagResponseService:
             meta_parts: list[str] = []
             meta_parts.append(f"source_type: {source.source_type}")
             meta_parts.append(f"title: {source.title}")
+            if source.url:
+                meta_parts.append(f"url: {source.url}")
             topic = source.metadata.get("topic")
             keywords = source.metadata.get("keywords")
             if topic:

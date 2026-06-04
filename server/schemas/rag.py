@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 
 TranscriptStatus = Literal["uploaded", "processing", "completed", "failed"]
+RagSearchScope = Literal["document", "web", "hybrid"]
 
 
 class TranscriptCreate(BaseModel):
@@ -300,7 +301,7 @@ class LectureSummaryResponse(BaseModel):
 class RetrievedSource(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    source_type: Literal["document"] = "document"
+    source_type: Literal["document", "web"] = "document"
     title: str
     snippet: str
     transcript_id: UUID | None = None
@@ -315,8 +316,15 @@ class RagQueryRequest(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     query: str = Field(min_length=1)
-    transcript_ids: list[UUID] = Field(min_length=1)
+    scope: RagSearchScope = "document"
+    transcript_ids: list[UUID] = Field(default_factory=list)
     top_k: int = Field(default=5, ge=1, le=20)
+
+    @model_validator(mode="after")
+    def validate_scope_inputs(self) -> "RagQueryRequest":
+        if self.scope in {"document", "hybrid"} and not self.transcript_ids:
+            raise ValueError("transcript_ids is required for document and hybrid scope")
+        return self
 
 
 # POST /rag/query 엔드포인트 응답 모델.

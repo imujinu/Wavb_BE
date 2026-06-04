@@ -1,41 +1,33 @@
-# RAG 검색 + 응답 생성 파이프라인의 HTTP 진입점.
-# POST /rag/query 단일 엔드포인트로 retrieval(RagQueryService) + generation(RagResponseService)을
-# 순차 조율하여 자연어 답변과 근거 청크를 함께 반환한다.
-# 외부에서 RAG 파이프라인을 호출할 유일한 통로이므로 라우터 등록 없이는 기능이 노출되지 않는다.
-
 from collections.abc import AsyncIterator
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from db.connection import DatabaseConnection, get_connection
 from dependencies.auth import get_current_user
 from repositories.rag_repository import RagRepository
 from schemas.auth import CurrentUser
-from schemas.rag import RagQueryRequest, RagQueryResponse
+from schemas.rag import RagQueryRequest, RagQueryResponse, RetrievedSource
 from services.rag.embedding_service import EmbeddingService
 from services.rag.morpheme_service import MorphemeService
 from services.rag.rag_query_service import RagQueryService
 from services.rag.rag_response_service import RagResponseService
+from services.rag.rerank_service import IdentityRerankService, RerankService
+from services.rag.web_search_service import (
+    WebSearchConfigurationError,
+    WebSearchProviderError,
+    WebSearchService,
+)
 
 
 router = APIRouter(prefix="/rag", tags=["rag"])
 
 
-# RagQueryService 요청 범위 인스턴스를 생성하는 의존성.
-# 동작 흐름:
-#   1. 요청 범위 DB 커넥션을 RagRepository에 주입
-#   2. 형태소 분석(MorphemeService) + 임베딩(EmbeddingService) 서비스 생성
-#   3. 세 의존성을 RagQueryService에 주입하여 반환
-# 필요성: 라우터에서 직접 서비스를 조립하면 의존성 결합이 커지므로 DI 함수로 분리한다.
 async def get_rag_query_service(
     connection: DatabaseConnection = Depends(get_connection),
 ) -> AsyncIterator[RagQueryService]:
-    # 1. DB 커넥션을 RagRepository에 주입 (요청 범위)
     repository = RagRepository(connection)
-    # 2. 검색 전처리용 서비스 생성 — query 형태소 분석 + 원문 임베딩
     embedding_service = EmbeddingService()
     morpheme_service = MorphemeService()
-    # 3. retrieval 조율 서비스로 묶어 반환
     yield RagQueryService(
         repository=repository,
         embedding_service=embedding_service,
@@ -43,11 +35,16 @@ async def get_rag_query_service(
     )
 
 
-# RagResponseService 인스턴스를 생성하는 의존성.
-# 동작 흐름: OpenAI client + 모델 설정을 캡슐화한 생성 서비스를 반환한다.
-# 필요성: generation 단계는 DB 의존성이 없으므로 단순 생성만 담당하는 별도 DI 함수로 분리한다.
 def get_rag_response_service() -> RagResponseService:
     return RagResponseService()
+
+
+def get_web_search_service() -> WebSearchService:
+    return WebSearchService()
+
+
+def get_rerank_service() -> RerankService:
+    return IdentityRerankService()
 
 
 @router.post("/query", response_model=RagQueryResponse)
@@ -56,32 +53,100 @@ async def rag_query(
     current_user: CurrentUser = Depends(get_current_user),
     rag_query_service: RagQueryService = Depends(get_rag_query_service),
     rag_response_service: RagResponseService = Depends(get_rag_response_service),
+    web_search_service: WebSearchService = Depends(get_web_search_service),
+    rerank_service: RerankService = Depends(get_rerank_service),
 ) -> RagQueryResponse:
-    """
-    기능 요약: 자연어 질의를 하이브리드 검색 → LLM 답변 생성 순으로 처리해 응답한다.
+    """문서, 웹, 하이브리드 scope에 따라 RAG source를 모으고 답변을 생성한다."""
+    warnings: list[str] = []
+    document_sources: list[RetrievedSource] = []
+    web_sources: list[RetrievedSource] = []
 
-    기능 흐름:
-        1. RagQueryService.search(...) → 하이브리드 검색 + RetrievedSource 변환
-        2. RagResponseService.generate(query, sources) → source 범위 내 한국어 답변 생성
-        3. answer + sources + warnings를 RagQueryResponse로 묶어 반환
+    if request.scope in {"document", "hybrid"}:
+        document_sources = await rag_query_service.search(
+            query=request.query,
+            transcript_ids=request.transcript_ids,
+            user_id=current_user.user_id,
+            top_k=request.top_k,
+        )
 
-    파라미터:
-        request: query(질의), transcript_ids(범위 한정), top_k(반환 수)를 담은 요청 모델
-    """
-    # 1. retrieval — 형태소/임베딩 전처리 후 하이브리드 검색으로 근거 청크 확보
-    sources = await rag_query_service.search(
-        query=request.query,
-        transcript_ids=request.transcript_ids,
-        user_id=current_user.user_id,
+    if request.scope in {"web", "hybrid"}:
+        try:
+            web_sources = await web_search_service.search(
+                request.query,
+                max_results=request.top_k,
+            )
+        except (WebSearchConfigurationError, WebSearchProviderError) as exc:
+            if request.scope == "hybrid" and document_sources:
+                warnings.append(str(exc))
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=str(exc),
+                ) from exc
+
+    sources = _select_sources(
+        scope=request.scope,
+        document_sources=document_sources,
+        web_sources=web_sources,
         top_k=request.top_k,
     )
+    sources = await rerank_service.rerank(request.query, sources)
+    sources = sources[: request.top_k]
 
-    # 2. generation — 검색된 source를 context로 LLM 답변 생성
     answer = await rag_response_service.generate(request.query, sources)
-
-    # 3. 답변 + 근거 source를 응답으로 반환
     return RagQueryResponse(
         answer=answer,
         sources=sources,
-        warnings=[],
+        warnings=warnings,
     )
+
+
+def _select_sources(
+    scope: str,
+    document_sources: list[RetrievedSource],
+    web_sources: list[RetrievedSource],
+    top_k: int,
+) -> list[RetrievedSource]:
+    """scope별 후보 source를 top_k 안으로 정리한다."""
+    if scope == "document":
+        return document_sources[:top_k]
+    if scope == "web":
+        return _normalize_web_scores(web_sources)[:top_k]
+
+    normalized_documents = _normalize_document_scores(document_sources)
+    normalized_web = _normalize_web_scores(web_sources)
+    ranked = (
+        [(0, source) for source in normalized_documents]
+        + [(1, source) for source in normalized_web]
+    )
+    ranked.sort(key=lambda item: (-(item[1].score or 0.0), item[0]))
+    return [source for _, source in ranked[:top_k]]
+
+
+def _normalize_document_scores(
+    sources: list[RetrievedSource],
+) -> list[RetrievedSource]:
+    """문서 RRF score를 source 목록 내부 기준 0~1 범위로 정규화한다."""
+    max_score = max((source.score or 0.0 for source in sources), default=0.0)
+    if max_score <= 0:
+        return [source.model_copy(update={"score": 0.0}) for source in sources]
+    return [
+        source.model_copy(update={"score": (source.score or 0.0) / max_score})
+        for source in sources
+    ]
+
+
+def _normalize_web_scores(
+    sources: list[RetrievedSource],
+) -> list[RetrievedSource]:
+    """Tavily score를 0~1 범위로 보정한다."""
+    return [
+        source.model_copy(update={"score": _clamp_score(source.score)})
+        for source in sources
+    ]
+
+
+def _clamp_score(score: float | None) -> float:
+    if score is None:
+        return 0.0
+    return max(0.0, min(1.0, score))
