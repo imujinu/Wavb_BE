@@ -8,6 +8,7 @@ from db import connection as db_connection
 from repositories.rag_repository import RagRepository
 from schemas.rag import (
     ChunkCreate,
+    LectureSummaryCreate,
     SearchChunkCreate,
     SegmentCreate,
     SummaryDocumentCreate,
@@ -86,15 +87,16 @@ def test_rag_migration_defines_step1_tables_and_indexes() -> None:
     assert "CREATE TABLE IF NOT EXISTS transcripts" in migration
     assert "CREATE TABLE IF NOT EXISTS segments" in migration
     assert "CREATE TABLE IF NOT EXISTS chunks" in migration
+    assert "CREATE TABLE IF NOT EXISTS lecture_summaries" in migration
     assert "CREATE EXTENSION IF NOT EXISTS vector" in migration
     assert "embedding vector(1536)" in migration
     assert "idx_chunks_text_fts" in migration
     assert "idx_chunks_embedding" in migration
+    assert "domain_type" not in migration
 
 
 def test_pydantic_models_validate_domain_and_ranges() -> None:
-    # domain_type은 str로 완화됨 — 임의 값 허용
-    assert TranscriptCreate(domain_type="memo", source_audio_uri="uploads/a.mp3")
+    assert TranscriptCreate(source_audio_uri="uploads/a.mp3")
 
     with pytest.raises(ValidationError):
         SegmentCreate(
@@ -106,9 +108,8 @@ def test_pydantic_models_validate_domain_and_ranges() -> None:
 
     with pytest.raises(ValidationError):
         ChunkCreate(
-            domain_type="meeting",
             chunk_index=0,
-            chunk_strategy="meeting_v1",
+            chunk_strategy="lecture_v1",
             text="invalid range",
             segment_start_index=2,
             segment_end_index=1,
@@ -117,7 +118,6 @@ def test_pydantic_models_validate_domain_and_ranges() -> None:
 
 def test_chunk_model_normalizes_blank_metadata_lists() -> None:
     chunk = ChunkCreate(
-        domain_type="lecture",
         chunk_index=0,
         chunk_strategy="lecture_topic_v1",
         text="개념 설명",
@@ -152,7 +152,6 @@ async def test_repository_creates_transcript_and_updates_result() -> None:
 
     transcript_id = await repository.create_transcript(
         TranscriptCreate(
-            domain_type="meeting",
             source_audio_uri="uploads/meeting.mp3",
             original_filename="meeting.mp3",
             mime_type="audio/mpeg",
@@ -171,8 +170,7 @@ async def test_repository_creates_transcript_and_updates_result() -> None:
 
     assert isinstance(transcript_id, UUID)
     assert "INSERT INTO transcripts" in connection.executed[0][0]
-    assert connection.executed[0][1][2] == "meeting"
-    assert connection.executed[0][1][4] == "uploads/meeting.mp3"
+    assert connection.executed[0][1][3] == "uploads/meeting.mp3"
     assert "UPDATE transcripts" in connection.executed[1][0]
     assert connection.executed[1][1][1] == "회의 내용"
     assert connection.executed[1][1][5] == "completed"
@@ -202,9 +200,8 @@ async def test_repository_inserts_segments_and_chunks() -> None:
         transcript_id,
         [
             ChunkCreate(
-                domain_type="meeting",
                 chunk_index=0,
-                chunk_strategy="meeting_speaker_turn_v1",
+                chunk_strategy="lecture_context_plan_v1",
                 segment_start_index=0,
                 segment_end_index=0,
                 start_seconds=0.0,
@@ -225,9 +222,9 @@ async def test_repository_inserts_segments_and_chunks() -> None:
     assert connection.executemany_calls[0][1][0][1] == transcript_id
     assert connection.executemany_calls[0][1][0][8] == '{"provider": "openai"}'
     assert "INSERT INTO chunks" in connection.executemany_calls[1][0]
-    assert connection.executemany_calls[1][1][0][2] == "meeting"
-    assert connection.executemany_calls[1][1][0][13] == ["일정"]
-    assert connection.executemany_calls[1][1][0][17] == "[0.1,0.2,0.3]"
+    assert connection.executemany_calls[1][1][0][2] == 0
+    assert connection.executemany_calls[1][1][0][12] == ["일정"]
+    assert connection.executemany_calls[1][1][0][16] == "[0.1,0.2,0.3]"
 
 
 @pytest.mark.asyncio
@@ -283,7 +280,7 @@ async def test_insert_search_chunks_creates_rows() -> None:
     assert first_row[2] == parent_chunk_id
     assert first_row[3] == 0
     assert first_row[8] == "첫 번째 검색 청크"
-    # index 9: text_morphemes (None — 테스트에서 형태소 서비스 미주입)
+    # index 9: text_morphemes. 형태소 분석 값이 없으면 NULL 그대로 저장한다.
     assert first_row[9] is None
     # index 10: embedding_model
     assert first_row[10] == "text-embedding-3-small"
@@ -405,7 +402,7 @@ async def test_search_chunks_hybrid_merges_keyword_and_vector_scores() -> None:
     hits = await repository.search_chunks_hybrid(
         morpheme_query="테스트 쿼리",
         embedding=[0.1] * 1536,
-        transcript_id=None,
+        transcript_ids=[transcript_id],
         user_id=None,
         top_k=5,
     )
@@ -433,7 +430,7 @@ async def test_search_chunks_hybrid_keyword_only_hit() -> None:
     hits = await repository.search_chunks_hybrid(
         morpheme_query="키워드 전용",
         embedding=[0.2] * 1536,
-        transcript_id=None,
+        transcript_ids=[transcript_id],
         user_id=None,
         top_k=5,
     )
@@ -471,7 +468,7 @@ async def test_search_chunks_hybrid_vector_only_hit() -> None:
     hits = await repository.search_chunks_hybrid(
         morpheme_query="벡터 전용",
         embedding=[0.3] * 1536,
-        transcript_id=None,
+        transcript_ids=[transcript_id],
         user_id=None,
         top_k=5,
     )
@@ -506,7 +503,7 @@ async def test_search_chunks_hybrid_returns_top_k() -> None:
     hits = await repository.search_chunks_hybrid(
         morpheme_query="top_k 테스트",
         embedding=[0.1] * 1536,
-        transcript_id=None,
+        transcript_ids=[transcript_id],
         user_id=None,
         top_k=4,
     )
@@ -520,14 +517,15 @@ async def test_search_chunks_hybrid_returns_top_k() -> None:
 
 @pytest.mark.asyncio
 async def test_search_by_keyword_builds_correct_sql() -> None:
-    # _search_by_keyword가 transcript_id 필터 없는 경우 올바른 FTS SQL을 생성하는지 검증한다.
+    # _search_by_keyword가 transcript_ids 배열 필터와 FTS SQL을 생성하는지 검증한다.
     connection = FakeConnection()
     repository = RagRepository(connection)
+    transcript_id = uuid4()
 
     connection.fetch_results = [[]]
     await repository._search_by_keyword(
         morpheme_query="회의 일정",
-        transcript_id=None,
+        transcript_ids=[transcript_id],
         user_id=None,
         top_k=5,
     )
@@ -538,13 +536,16 @@ async def test_search_by_keyword_builds_correct_sql() -> None:
     assert "plainto_tsquery" in sql
     assert "ts_rank" in sql
     assert "text_morphemes" in sql
-    assert "coalesce" in sql
+    assert "coalesce(sc.text_morphemes, '')" in sql
+    assert "coalesce(sc.text, '')" in sql
+    assert "sc.transcript_id = ANY" in sql
     assert args[0] == "회의 일정"
+    assert args[1] == [transcript_id]
 
 
 @pytest.mark.asyncio
 async def test_search_by_keyword_adds_transcript_filter() -> None:
-    # transcript_id가 주어졌을 때 WHERE 절에 transcript_id 필터가 추가되는지 검증한다.
+    # transcript_ids가 주어졌을 때 WHERE 절에 ANY 배열 필터가 추가되는지 검증한다.
     connection = FakeConnection()
     repository = RagRepository(connection)
 
@@ -552,15 +553,15 @@ async def test_search_by_keyword_adds_transcript_filter() -> None:
     connection.fetch_results = [[]]
     await repository._search_by_keyword(
         morpheme_query="필터 테스트",
-        transcript_id=transcript_id,
+        transcript_ids=[transcript_id],
         user_id=None,
         top_k=5,
     )
 
     sql, args = connection.fetch_calls[0]
-    assert "sc.transcript_id" in sql
-    # args[0]=morpheme_query, args[1]=transcript_id
-    assert args[1] == transcript_id
+    assert "sc.transcript_id = ANY" in sql
+    # args[0]=morpheme_query, args[1]=transcript_ids
+    assert args[1] == [transcript_id]
 
 
 @pytest.mark.asyncio
@@ -573,7 +574,7 @@ async def test_search_by_keyword_adds_user_id_join() -> None:
     connection.fetch_results = [[]]
     await repository._search_by_keyword(
         morpheme_query="사용자 필터",
-        transcript_id=None,
+        transcript_ids=[uuid4()],
         user_id=user_id,
         top_k=5,
     )
@@ -581,7 +582,7 @@ async def test_search_by_keyword_adds_user_id_join() -> None:
     sql, args = connection.fetch_calls[0]
     assert "JOIN transcripts t" in sql
     assert "t.user_id" in sql
-    assert args[1] == user_id
+    assert args[2] == user_id
 
 
 @pytest.mark.asyncio
@@ -589,11 +590,12 @@ async def test_search_by_vector_builds_correct_sql() -> None:
     # _search_by_vector가 pgvector <=> 연산자를 포함한 SQL을 생성하는지 검증한다.
     connection = FakeConnection()
     repository = RagRepository(connection)
+    transcript_id = uuid4()
 
     connection.fetch_results = [[]]
     await repository._search_by_vector(
         embedding=[0.1] * 5,
-        transcript_id=None,
+        transcript_ids=[transcript_id],
         user_id=None,
         top_k=5,
     )
@@ -602,9 +604,11 @@ async def test_search_by_vector_builds_correct_sql() -> None:
     assert "<=>" in sql
     assert "::vector" in sql
     assert "distance" in sql
+    assert "sc.transcript_id = ANY" in sql
     # embedding이 vector literal 형식으로 변환되어 첫 번째 인자로 전달되는지 확인
     assert args[0].startswith("[")
     assert args[0].endswith("]")
+    assert args[1] == [transcript_id]
 
 
 @pytest.mark.asyncio
@@ -631,7 +635,7 @@ async def test_search_by_vector_score_is_one_minus_distance() -> None:
 
     hits = await repository._search_by_vector(
         embedding=[0.1] * 5,
-        transcript_id=None,
+        transcript_ids=[transcript_id],
         user_id=None,
         top_k=5,
     )
@@ -665,17 +669,19 @@ async def test_get_parent_chunks_queries_chunks_table() -> None:
     connection.fetch_results = [[{
         "id": chunk_id,
         "transcript_id": transcript_id,
-        "domain_type": "meeting",
+        "transcript_title": "주간 프로젝트 강의",
         "chunk_index": 0,
         "topic": "일정",
         "subtopic": "주간 회의",
         "keywords": ["일정", "프로젝트"],
         "speaker_labels": ["speaker_1"],
+        "segment_start_index": 0,
+        "segment_end_index": 4,
         "start_seconds": 0.0,
         "end_seconds": 60.0,
         "text": "주간 프로젝트 일정 논의",
         "summary": "일정 논의 요약",
-        "metadata": {"decision_flag": True},
+        "metadata": '{"decision_flag": true}',
     }]]
 
     results = await repository.get_parent_chunks([chunk_id])
@@ -684,11 +690,14 @@ async def test_get_parent_chunks_queries_chunks_table() -> None:
     result = results[0]
     assert result.id == chunk_id
     assert result.transcript_id == transcript_id
-    assert result.domain_type == "meeting"
+    assert result.transcript_title == "주간 프로젝트 강의"
     assert result.topic == "일정"
     assert result.keywords == ["일정", "프로젝트"]
     assert result.speaker_labels == ["speaker_1"]
+    assert result.segment_start_index == 0
+    assert result.segment_end_index == 4
     assert abs(result.end_seconds - 60.0) < 1e-6
+    assert result.metadata == {"decision_flag": True}
     assert result.summary == "일정 논의 요약"
 
     # ANY($1::uuid[]) 패턴이 SQL에 포함되는지 확인
@@ -700,6 +709,39 @@ async def test_get_parent_chunks_queries_chunks_table() -> None:
 
 
 # --- get_transcript_by_id / summary_documents 영속화 테스트 ---
+
+
+@pytest.mark.asyncio
+async def test_fetch_chunks_by_transcript_parses_json_metadata() -> None:
+    connection = FakeConnection()
+    repository = RagRepository(connection)
+
+    chunk_id = uuid4()
+    transcript_id = uuid4()
+    connection.fetch_results = [[{
+        "id": chunk_id,
+        "chunk_index": 0,
+        "topic": "역전파",
+        "subtopic": "기울기 계산",
+        "keywords": ["역전파", "손실 함수"],
+        "speaker_labels": [],
+        "segment_start_index": 0,
+        "segment_end_index": 2,
+        "start_seconds": 0.0,
+        "end_seconds": 45.0,
+        "text": "역전파는 손실 함수의 기울기를 계산합니다.",
+        "summary": "역전파의 목적을 설명합니다.",
+        "metadata": '{"concepts": ["역전파"], "learning_points": ["손실 함수의 기울기를 계산한다"]}',
+    }]]
+
+    chunks = await repository.fetch_chunks_by_transcript(transcript_id)
+
+    assert len(chunks) == 1
+    assert chunks[0].id == chunk_id
+    assert chunks[0].metadata == {
+        "concepts": ["역전파"],
+        "learning_points": ["손실 함수의 기울기를 계산한다"],
+    }
 
 
 class FetchrowConnection:
@@ -724,7 +766,6 @@ async def test_get_transcript_by_id_maps_row_and_filters_owner() -> None:
     connection = FetchrowConnection({
         "id": transcript_id,
         "user_id": user_id,
-        "domain_type": "meeting",
         "title": "주간 회의",
         "full_text": "회의 원문",
         "summary": None,
@@ -832,6 +873,59 @@ async def test_update_summary_document_payload_returns_bool() -> None:
 
 
 @pytest.mark.asyncio
+async def test_insert_lecture_summary_serializes_payload() -> None:
+    summary_id_holder = {}
+
+    class InsertConnection(FetchrowConnection):
+        async def fetchrow(self, query: str, *args):
+            self.calls.append((query, args))
+            summary_id_holder["id"] = args[0]
+            return {"id": args[0]}
+
+    connection = InsertConnection(None)
+    repository = RagRepository(connection)
+
+    returned_id = await repository.insert_lecture_summary(
+        LectureSummaryCreate(
+            transcript_id=uuid4(),
+            user_id=uuid4(),
+            payload={"overview": {"summary": "강의 요약"}, "contexts": []},
+            model="gpt-4o-mini",
+        )
+    )
+
+    assert returned_id == summary_id_holder["id"]
+    sql, args = connection.calls[0]
+    assert "INSERT INTO lecture_summaries" in sql
+    assert "ON CONFLICT (transcript_id)" in sql
+    assert args[3] == '{"overview": {"summary": "강의 요약"}, "contexts": []}'
+
+
+@pytest.mark.asyncio
+async def test_get_lecture_summary_by_transcript_parses_json_payload() -> None:
+    summary_id = uuid4()
+    transcript_id = uuid4()
+    user_id = uuid4()
+    connection = FetchrowConnection({
+        "id": summary_id,
+        "transcript_id": transcript_id,
+        "user_id": user_id,
+        "payload": '{"overview": {"summary": "기존 요약"}}',
+        "model": "gpt-4o-mini",
+    })
+    repository = RagRepository(connection)
+
+    detail = await repository.get_lecture_summary_by_transcript(transcript_id, user_id)
+
+    assert detail is not None
+    assert detail.id == summary_id
+    assert detail.payload == {"overview": {"summary": "기존 요약"}}
+    sql, args = connection.calls[0]
+    assert "WHERE transcript_id = $1 AND user_id = $2" in sql
+    assert args == (transcript_id, user_id)
+
+
+@pytest.mark.asyncio
 async def test_get_parent_chunks_handles_null_optional_fields() -> None:
     # NULL 가능 필드(topic, summary, start/end_seconds 등)가 None으로 올바르게 매핑되는지 검증한다.
     connection = FakeConnection()
@@ -843,12 +937,14 @@ async def test_get_parent_chunks_handles_null_optional_fields() -> None:
     connection.fetch_results = [[{
         "id": chunk_id,
         "transcript_id": transcript_id,
-        "domain_type": "lecture",
+        "transcript_title": None,
         "chunk_index": 2,
         "topic": None,
         "subtopic": None,
         "keywords": [],
         "speaker_labels": [],
+        "segment_start_index": None,
+        "segment_end_index": None,
         "start_seconds": None,
         "end_seconds": None,
         "text": "강의 내용",

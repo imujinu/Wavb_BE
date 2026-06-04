@@ -4,14 +4,12 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
-DomainType = Literal["general", "legal", "medical", "science", "it", "religion"]
 TranscriptStatus = Literal["uploaded", "processing", "completed", "failed"]
 
 
 class TranscriptCreate(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    domain_type: str
     source_audio_uri: str = Field(min_length=1)
     user_id: UUID | None = None
     title: str | None = None
@@ -55,7 +53,6 @@ class SegmentCreate(BaseModel):
 class ChunkCreate(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    domain_type: str
     chunk_index: int = Field(ge=0)
     chunk_strategy: str = Field(min_length=1)
     text: str = Field(min_length=1)
@@ -103,11 +100,16 @@ class ChunkRow(BaseModel):
 
     id: UUID
     chunk_index: int
+    topic: str | None = None
+    subtopic: str | None = None
+    keywords: list[str] = Field(default_factory=list)
+    speaker_labels: list[str] = Field(default_factory=list)
     segment_start_index: int | None
     segment_end_index: int | None
     start_seconds: float | None
     end_seconds: float | None
     text: str
+    summary: str | None = None
     metadata: dict[str, Any]
 
 
@@ -153,12 +155,14 @@ class ParentChunkResult(BaseModel):
 
     id: UUID
     transcript_id: UUID
-    domain_type: str
+    transcript_title: str | None = None
     chunk_index: int
     topic: str | None
     subtopic: str | None
     keywords: list[str]
     speaker_labels: list[str]
+    segment_start_index: int | None = None
+    segment_end_index: int | None = None
     start_seconds: float | None
     end_seconds: float | None
     text: str
@@ -173,7 +177,6 @@ class TranscriptDetail(BaseModel):
 
     id: UUID
     user_id: UUID | None
-    domain_type: str
     title: str | None
     full_text: str | None
     summary: str | None
@@ -208,23 +211,119 @@ class SummaryDocumentDetail(BaseModel):
     model: str | None
 
 
+# lecture_summaries 테이블 insert용 모델.
+# 강의 요약 데이터 API가 생성한 overview/contexts/keywords JSON payload를 저장한다.
+class LectureSummaryCreate(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    transcript_id: UUID
+    user_id: UUID | None = None
+    payload: dict[str, Any]
+    model: str | None = None
+
+
+# lecture_summaries 테이블에서 읽어온 강의 요약 데이터 모델.
+# 이미 생성된 요약이 있으면 LLM 재호출 없이 이 모델을 응답으로 변환한다.
+class LectureSummaryDetail(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    id: UUID
+    transcript_id: UUID
+    user_id: UUID | None
+    payload: dict[str, Any]
+    model: str | None
+
+
+# 강의 요약 전체 개요 모델.
+# API 응답 최상위 overview에 노출되어 프론트가 title/summary/key_points를 바로 사용할 수 있다.
+class LectureSummaryOverview(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    title: str = ""
+    summary: str = ""
+    key_points: list[str] = Field(default_factory=list)
+
+
+# 강의 맥락 단위 요약 모델.
+# chunk의 topic/keywords/concepts/learning_points와 시간 범위를 함께 노출한다.
+class LectureSummaryContext(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    index: int
+    topic: str = ""
+    subtitle: str = ""
+    content: str = ""
+    keywords: list[str] = Field(default_factory=list)
+    concepts: list[str] = Field(default_factory=list)
+    learning_points: list[str] = Field(default_factory=list)
+    start_seconds: float | None = None
+    end_seconds: float | None = None
+    segment_start_index: int | None = None
+    segment_end_index: int | None = None
+
+
+# 강의 키워드별 요약 모델.
+# related_context_indices로 어떤 contexts와 연결되는지 표현한다.
+class LectureSummaryKeyword(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    keyword: str
+    summary: str = ""
+    related_context_indices: list[int] = Field(default_factory=list)
+
+
+# lecture_summaries.payload JSONB에 저장되는 내부 payload 형태.
+# DB에는 이 구조를 dict로 저장하고, API 응답에서는 payload 래퍼 없이 펼쳐서 반환한다.
+class LectureSummaryPayload(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    overview: LectureSummaryOverview = Field(default_factory=LectureSummaryOverview)
+    contexts: list[LectureSummaryContext] = Field(default_factory=list)
+    keywords: list[LectureSummaryKeyword] = Field(default_factory=list)
+
+
+# POST /audio/transcripts/{transcript_id}/summary 응답 모델.
+# payload 래퍼 없이 overview, contexts, keywords를 최상위에 둔다.
+class LectureSummaryResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    summary_id: UUID
+    transcript_id: UUID
+    persona_id: str = "general"
+    overview: LectureSummaryOverview
+    contexts: list[LectureSummaryContext]
+    keywords: list[LectureSummaryKeyword]
+
+
+# RAG 응답에서 클라이언트에 노출할 단일 출처 모델.
+# DB 내부 chunk row 대신 문서/웹 공통으로 확장 가능한 얇은 source 형태를 사용한다.
+class RetrievedSource(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    source_type: Literal["document"] = "document"
+    title: str
+    snippet: str
+    transcript_id: UUID | None = None
+    url: str | None = None
+    score: float | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
 # POST /rag/query 엔드포인트 요청 모델.
-# query는 자연어 검색 질의, transcript_id는 특정 트랜스크립트로 검색 범위 한정 시 사용.
+# 인증 사용자의 transcript_ids 범위 안에서만 문서 검색을 수행한다.
 class RagQueryRequest(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     query: str = Field(min_length=1)
-    transcript_id: UUID | None = None
-    # JWT 도입 전 임시 필드 — 추후 액세스 토큰에서 추출하는 방식으로 대체 예정
-    user_id: UUID | None = None
+    transcript_ids: list[UUID] = Field(min_length=1)
     top_k: int = Field(default=5, ge=1, le=20)
 
 
 # POST /rag/query 엔드포인트 응답 모델.
-# LLM이 생성한 answer와 근거가 된 parent chunk 목록을 함께 반환한다.
+# LLM이 생성한 answer와 클라이언트용 RetrievedSource 목록을 함께 반환한다.
 class RagQueryResponse(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     answer: str
-    sources: list[ParentChunkResult]
-    chunks_retrieved: int
+    sources: list[RetrievedSource]
+    warnings: list[str] = Field(default_factory=list)

@@ -4,7 +4,6 @@ CREATE EXTENSION IF NOT EXISTS vector;
 CREATE TABLE IF NOT EXISTS transcripts (
   id UUID PRIMARY KEY,
   user_id UUID,
-  domain_type TEXT NOT NULL CHECK (domain_type IN ('meeting', 'lecture')),
   title TEXT,
   source_audio_uri TEXT NOT NULL,
   original_filename TEXT,
@@ -37,7 +36,6 @@ CREATE TABLE IF NOT EXISTS segments (
 CREATE TABLE IF NOT EXISTS chunks (
   id UUID PRIMARY KEY,
   transcript_id UUID NOT NULL REFERENCES transcripts(id) ON DELETE CASCADE,
-  domain_type TEXT NOT NULL CHECK (domain_type IN ('meeting', 'lecture')),
   chunk_index INT NOT NULL,
   chunk_strategy TEXT NOT NULL,
   segment_start_index INT,
@@ -57,8 +55,16 @@ CREATE TABLE IF NOT EXISTS chunks (
   UNIQUE (transcript_id, chunk_strategy, chunk_index)
 );
 
-CREATE INDEX IF NOT EXISTS idx_transcripts_user_domain
-  ON transcripts(user_id, domain_type);
+CREATE TABLE IF NOT EXISTS lecture_summaries (
+  id UUID PRIMARY KEY,
+  transcript_id UUID NOT NULL REFERENCES transcripts(id) ON DELETE CASCADE,
+  user_id UUID,
+  payload JSONB NOT NULL,
+  model TEXT,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE (transcript_id)
+);
 
 CREATE INDEX IF NOT EXISTS idx_transcripts_created_at
   ON transcripts(created_at DESC);
@@ -75,9 +81,6 @@ CREATE INDEX IF NOT EXISTS idx_segments_time
 CREATE INDEX IF NOT EXISTS idx_chunks_transcript
   ON chunks(transcript_id, chunk_index);
 
-CREATE INDEX IF NOT EXISTS idx_chunks_domain_topic
-  ON chunks(domain_type, topic);
-
 CREATE INDEX IF NOT EXISTS idx_chunks_keywords
   ON chunks USING GIN (keywords);
 
@@ -92,3 +95,9 @@ CREATE INDEX IF NOT EXISTS idx_chunks_text_fts
 
 CREATE INDEX IF NOT EXISTS idx_chunks_embedding
   ON chunks USING ivfflat (embedding vector_cosine_ops);
+
+CREATE INDEX IF NOT EXISTS idx_lecture_summaries_transcript
+  ON lecture_summaries(transcript_id);
+
+CREATE INDEX IF NOT EXISTS idx_lecture_summaries_user_created
+  ON lecture_summaries(user_id, created_at DESC);

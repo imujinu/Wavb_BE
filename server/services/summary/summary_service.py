@@ -1,4 +1,5 @@
 import asyncio
+import json
 
 from fastapi import HTTPException, status
 from openai import APIError, AsyncOpenAI
@@ -56,6 +57,69 @@ class SummaryService:
                 "and keep the result concise."
             ),
         )
+
+    async def summarize_with_keywords(self, transcript: str) -> tuple[str, list[str]]:
+        """
+        기능 요약: 요약문과 핵심 키워드를 한 번의 LLM 호출로 함께 추출한다.
+        — 실시간 전사 25초 구간(짧은 텍스트)용. 기존 summarize()는 다른 호출부가 있어 그대로 둔다.
+
+        단일 호출을 쓰는 이유:
+            25초 분량은 청킹이 불필요할 만큼 짧으므로, 요약과 키워드를 별도 호출로
+            두 번 부르는 대신 JSON 응답 하나로 받아 레이턴시·비용을 줄인다.
+
+        기능 흐름:
+            1. 빈 텍스트면 422 (summarize()와 동일 계약)
+            2. JSON 강제(response_format)로 {summary, keywords} 요청
+            3. 파싱 성공 시 (summary, keywords[:6]) 반환
+            4. 호출/파싱 실패 시 폴백 — 기존 summarize()로 요약만 만들고 keywords=[]
+               (키워드 추출 실패가 요약 자체를 막지 않도록)
+
+        파라미터:
+            transcript: 요약 대상 한국어 전사 텍스트
+
+        반환:
+            (summary, keywords) 튜플
+        """
+        # 1. 빈 텍스트 가드 — 빈 입력으로 LLM을 호출하지 않는다.
+        if not transcript.strip():
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Transcript cannot be empty.",
+            )
+
+        # 2. 요약 + 키워드를 JSON 한 덩어리로 요청
+        prompt = (
+            "다음 한국어 음성 전사 구간을 분석해 JSON만 출력하라.\n"
+            '형식: {"summary": "2~3문장 한국어 요약", "keywords": ["핵심어", ...]}\n'
+            "- keywords는 3~6개, 전사에 실제 등장한 핵심 명사/개념만 담을 것.\n"
+            "- 전사에 없는 내용을 지어내지 말 것."
+        )
+        try:
+            response = await self._client.chat.completions.create(
+                model=self._model,
+                temperature=0.3,
+                response_format={"type": "json_object"},
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": f"{prompt}\n\nText:\n{transcript.strip()}"},
+                ],
+            )
+            data = json.loads(response.choices[0].message.content or "{}")
+        except Exception:
+            # 4. 폴백: 키워드 추출 실패 시 요약만이라도 보장 (keywords는 빈 배열)
+            return await self.summarize(transcript), []
+
+        # 3. 파싱 결과 정리 — summary 문자열, keywords는 비어있지 않은 문자열 최대 6개
+        summary = (data.get("summary") or "").strip()
+        keywords = [
+            kw.strip()
+            for kw in (data.get("keywords") or [])
+            if isinstance(kw, str) and kw.strip()
+        ][:6]
+        # summary가 비면(모델이 형식을 벗어난 경우) 기존 경로로 재생성
+        if not summary:
+            return await self.summarize(transcript), keywords
+        return summary, keywords
 
     async def _summarize_chunks(self, chunks: list[str]) -> list[str]:
         if self._summary_concurrency <= 0:

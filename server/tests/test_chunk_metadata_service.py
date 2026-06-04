@@ -36,19 +36,17 @@ def make_service(responses, concurrency: int = 2) -> ChunkMetadataService:
 
 
 def make_chunk(
-    domain_type="meeting",
     chunk_index: int = 0,
     metadata=None,
 ) -> ChunkCreate:
     return ChunkCreate(
-        domain_type=domain_type,
         chunk_index=chunk_index,
-        chunk_strategy=f"{domain_type}_test_v1",
+        chunk_strategy="lecture_test_v1",
         text="출시 일정과 담당 업무를 논의했습니다.",
         metadata=metadata
         or {
             "segment_count": 2,
-            "chunk_goal": "summary_context_meeting",
+            "chunk_goal": "summary_context_lecture",
             "planning_method": "llm",
             "planning_reason": "안건 단위 분리",
         },
@@ -65,7 +63,7 @@ def test_chunk_metadata_prompt_targets_summary_context_metadata() -> None:
 
 
 @pytest.mark.asyncio
-async def test_enrich_meeting_chunk_adds_topic_keywords_summary_and_items() -> None:
+async def test_enrich_chunk_adds_topic_keywords_summary_and_learning_metadata() -> None:
     service = make_service(
         [
             """
@@ -75,8 +73,8 @@ async def test_enrich_meeting_chunk_adds_topic_keywords_summary_and_items() -> N
               "keywords": ["출시", "일정", ""],
               "summary": "출시 일정과 담당 업무를 논의했습니다.",
               "metadata": {
-                "decision_items": ["다음 주 출시"],
-                "action_items": ["Mina가 테스트 계획 공유"]
+                "concepts": ["출시 일정"],
+                "learning_points": ["담당 업무를 확인한다"]
               }
             }
             """
@@ -90,11 +88,11 @@ async def test_enrich_meeting_chunk_adds_topic_keywords_summary_and_items() -> N
     assert enriched[0].keywords == ["출시", "일정"]
     assert enriched[0].summary == "출시 일정과 담당 업무를 논의했습니다."
     assert enriched[0].metadata["segment_count"] == 2
-    assert enriched[0].metadata["chunk_goal"] == "summary_context_meeting"
+    assert enriched[0].metadata["chunk_goal"] == "summary_context_lecture"
     assert enriched[0].metadata["planning_method"] == "llm"
     assert enriched[0].metadata["planning_reason"] == "안건 단위 분리"
-    assert enriched[0].metadata["decision_items"] == ["다음 주 출시"]
-    assert enriched[0].metadata["action_items"] == ["Mina가 테스트 계획 공유"]
+    assert enriched[0].metadata["concepts"] == ["출시 일정"]
+    assert enriched[0].metadata["learning_points"] == ["담당 업무를 확인한다"]
 
 
 @pytest.mark.asyncio
@@ -119,7 +117,6 @@ async def test_enrich_lecture_chunk_adds_concepts_and_learning_points() -> None:
     enriched = await service.enrich_chunks(
         [
             make_chunk(
-                domain_type="lecture",
                 metadata={
                     "segment_count": 2,
                     "chunk_goal": "summary_context_lecture",

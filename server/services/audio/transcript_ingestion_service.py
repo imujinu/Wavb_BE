@@ -9,7 +9,6 @@ from fastapi import HTTPException, UploadFile
 from repositories.rag_repository import RagRepository
 from schemas.rag import (
     ChunkCreate,
-    DomainType,
     SearchChunkCreate,
     SegmentCreate,
     TranscriptCreate,
@@ -80,17 +79,14 @@ class TranscriptIngestionService:
         file_uri: str,
         file_name: str,
         languages: list[str],
-        domain_types: list[str],
         user_id: UUID | None = None,
     ) -> TranscriptIngestionResult:
-        domain_type = self._resolve_domain_type(domain_types)
         language = languages[0] if languages else "ko"
         title = Path(file_name).stem
 
         transcript_id = await self._repository.create_transcript(
             TranscriptCreate(
                 user_id=user_id,
-                domain_type=domain_type,
                 title=title,
                 source_audio_uri=file_uri,
                 original_filename=file_name,
@@ -133,7 +129,7 @@ class TranscriptIngestionService:
             )
 
             _t0 = time.perf_counter()
-            chunks = await self._run_pipeline(transcript_id, segments, domain_type)
+            chunks = await self._run_pipeline(transcript_id, segments)
             logger.info(
                 "[timing] pipeline total: %.2fs  (segments=%d, chunks=%d)",
                 time.perf_counter() - _t0,
@@ -168,7 +164,6 @@ class TranscriptIngestionService:
     # route에서 pydantic 모델을 dict로 직렬화해 전달하므로 이 메서드가 변환을 담당한다.
     async def ingest_realtime_segments(
         self,
-        domain_type: str,
         title: str,
         duration_seconds: float,
         segments: list[dict],
@@ -193,7 +188,6 @@ class TranscriptIngestionService:
         ]
         return await self.ingest_from_segments(
             segments=segment_creates,
-            domain_type=domain_type,  # type: ignore[arg-type]
             title=title,
             duration_seconds=duration_seconds,
             user_id=user_id,
@@ -204,17 +198,16 @@ class TranscriptIngestionService:
     async def ingest_from_segments(
         self,
         segments: list[SegmentCreate],
-        domain_type: DomainType,
         title: str | None = None,
         duration_seconds: float | None = None,
         user_id: UUID | None = None,
     ) -> TranscriptIngestionResult:
+        _t0_total = time.perf_counter()
         settings = get_settings()
         stt_model = settings.openai_stt_model
         transcript_id = await self._repository.create_transcript(
             TranscriptCreate(
                 user_id=user_id,
-                domain_type=domain_type,
                 title=title,
                 source_audio_uri="realtime://recording",
                 duration_seconds=duration_seconds,
@@ -234,7 +227,7 @@ class TranscriptIngestionService:
                     status="completed",
                 ),
             )
-            chunks = await self._run_pipeline(transcript_id, segments, domain_type)
+            chunks = await self._run_pipeline(transcript_id, segments)
         except Exception as exc:
             await self._repository.update_transcript_result(
                 transcript_id,
@@ -252,6 +245,7 @@ class TranscriptIngestionService:
             stt_model=stt_model,
             segment_count=len(segments),
             chunk_count=len(chunks),
+            processing_seconds=round(time.perf_counter() - _t0_total, 2),
         )
 
     # ingest_upload과 ingest_from_segments의 공통 후처리를 담당한다.
@@ -260,14 +254,13 @@ class TranscriptIngestionService:
         self,
         transcript_id: UUID,
         segments: list[SegmentCreate],
-        domain_type: DomainType,
     ) -> list[ChunkCreate]:
         _t = time.perf_counter()
         await self._repository.insert_segments(transcript_id, segments)
         logger.info("[timing]   insert_segments: %.2fs", time.perf_counter() - _t)
 
         _t = time.perf_counter()
-        chunks = await self._build_chunks(domain_type, segments)
+        chunks = await self._build_chunks(segments)
         logger.info(
             "[timing]   chunk_planning: %.2fs  (chunks=%d)",
             time.perf_counter() - _t,
@@ -302,17 +295,16 @@ class TranscriptIngestionService:
     # planner 초기화나 호출, plan 변환이 실패하면 deterministic fallback chunk를 저장합니다.
     async def _build_chunks(
         self,
-        domain_type: DomainType,
         segments: list[SegmentCreate],
     ) -> list[ChunkCreate]:
         try:
             planning_service = (
                 self._context_chunk_planning_service or ContextChunkPlanningService()
             )
-            plan_groups = await planning_service.plan_chunks(domain_type, segments)
-            return self._planned_chunk_builder.build(domain_type, segments, plan_groups)
+            plan_groups = await planning_service.plan_chunks(segments)
+            return self._planned_chunk_builder.build(segments, plan_groups)
         except Exception:
-            return self._fallback_chunk_builder.build(domain_type, segments)
+            return self._fallback_chunk_builder.build(segments)
 
     # chunk metadata를 생성합니다.
     # OpenAI 설정이 없거나 생성 중 오류가 나면 원본 chunk를 반환해 transcript 저장 흐름을 유지합니다.
@@ -374,6 +366,7 @@ class TranscriptIngestionService:
                     start_seconds=search_chunks[i].start_seconds,
                     end_seconds=search_chunks[i].end_seconds,
                     text=search_chunks[i].text,
+                    text_morphemes=search_chunks[i].text_morphemes,
                     metadata=search_chunks[i].metadata,
                     # EmbeddingService 기본 모델값과 동기화
                     embedding_model="text-embedding-3-small",
@@ -395,13 +388,6 @@ class TranscriptIngestionService:
                 transcript_id,
                 exc,
             )
-
-    def _resolve_domain_type(self, domain_types: list[str]) -> DomainType:
-        valid: set[DomainType] = {"general", "legal", "medical", "science", "it", "religion"}
-        for dt in domain_types:
-            if dt in valid:
-                return dt  # type: ignore[return-value]
-        return "general"
 
     def _to_segment_creates(
         self,

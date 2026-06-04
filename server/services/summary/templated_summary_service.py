@@ -53,13 +53,11 @@ class TemplatedSummaryService:
     #   transcript_text: 요약 대상 원문 (예: "오늘 회의에서는 ...")
     #   template: 생성 기준이 되는 폼 명세(TemplateSpec)
     #   title: transcript 제목 (프롬프트 맥락 보강용, 없으면 None)
-    #   domain_type: "meeting" | "lecture" 등 도메인 힌트
     async def summarize_for_template(
         self,
         transcript_text: str,
         template: TemplateSpec,
         title: str | None = None,
-        domain_type: str | None = None,
     ) -> dict:
         # 1. 빈 텍스트 방어
         if not transcript_text or not transcript_text.strip():
@@ -76,7 +74,6 @@ class TemplatedSummaryService:
                 text=text,
                 template=template,
                 title=title,
-                domain_type=domain_type,
             )
         else:
             # 3. 긴 입력: map-reduce
@@ -84,7 +81,6 @@ class TemplatedSummaryService:
                 text=text,
                 template=template,
                 title=title,
-                domain_type=domain_type,
             )
 
         # 4. 누락/타입 오류 섹션을 빈 값으로 보정해 PDF 렌더가 항상 안정적으로 동작하도록 한다
@@ -104,7 +100,6 @@ class TemplatedSummaryService:
         text: str,
         template: TemplateSpec,
         title: str | None,
-        domain_type: str | None,
     ) -> dict:
         # 1. 윈도우 분할
         windows = self._split_text(text, self._text_chunk_chars)
@@ -128,7 +123,6 @@ class TemplatedSummaryService:
             text=combined,
             template=template,
             title=title,
-            domain_type=domain_type,
         )
 
     # 윈도우 목록을 Semaphore로 동시 실행 수를 제한하며 병렬 부분요약한다.
@@ -228,7 +222,6 @@ class TemplatedSummaryService:
         text: str,
         template: TemplateSpec,
         title: str | None,
-        domain_type: str | None,
     ) -> dict:
         try:
             # 1. 섹션 지시문 + 출력 스키마를 담은 프롬프트로 요약 요청
@@ -240,7 +233,7 @@ class TemplatedSummaryService:
                     {"role": "system", "content": SYSTEM_PROMPT},
                     {
                         "role": "user",
-                        "content": self._build_prompt(text, template, title, domain_type),
+                        "content": self._build_prompt(text, template, title),
                     },
                 ],
             )
@@ -280,7 +273,6 @@ class TemplatedSummaryService:
         text: str,
         template: TemplateSpec,
         title: str | None,
-        domain_type: str | None,
     ) -> str:
         # 1. 섹션별 지시문 나열 (key — label: description)
         section_lines = "\n".join(
@@ -293,8 +285,6 @@ class TemplatedSummaryService:
         header_context = []
         if title:
             header_context.append(f"제목: {title}")
-        if domain_type:
-            header_context.append(f"유형: {domain_type}")
         context_line = ("\n".join(header_context) + "\n") if header_context else ""
 
         return (
