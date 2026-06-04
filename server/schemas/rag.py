@@ -155,11 +155,14 @@ class ParentChunkResult(BaseModel):
 
     id: UUID
     transcript_id: UUID
+    transcript_title: str | None = None
     chunk_index: int
     topic: str | None
     subtopic: str | None
     keywords: list[str]
     speaker_labels: list[str]
+    segment_start_index: int | None = None
+    segment_end_index: int | None = None
     start_seconds: float | None
     end_seconds: float | None
     text: str
@@ -292,23 +295,35 @@ class LectureSummaryResponse(BaseModel):
     keywords: list[LectureSummaryKeyword]
 
 
+# RAG 응답에서 클라이언트에 노출할 단일 출처 모델.
+# DB 내부 chunk row 대신 문서/웹 공통으로 확장 가능한 얇은 source 형태를 사용한다.
+class RetrievedSource(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    source_type: Literal["document"] = "document"
+    title: str
+    snippet: str
+    transcript_id: UUID | None = None
+    url: str | None = None
+    score: float | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
 # POST /rag/query 엔드포인트 요청 모델.
-# query는 자연어 검색 질의, transcript_id는 특정 트랜스크립트로 검색 범위 한정 시 사용.
+# 인증 사용자의 transcript_ids 범위 안에서만 문서 검색을 수행한다.
 class RagQueryRequest(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     query: str = Field(min_length=1)
-    transcript_id: UUID | None = None
-    # JWT 도입 전 임시 필드 — 추후 액세스 토큰에서 추출하는 방식으로 대체 예정
-    user_id: UUID | None = None
+    transcript_ids: list[UUID] = Field(min_length=1)
     top_k: int = Field(default=5, ge=1, le=20)
 
 
 # POST /rag/query 엔드포인트 응답 모델.
-# LLM이 생성한 answer와 근거가 된 parent chunk 목록을 함께 반환한다.
+# LLM이 생성한 answer와 클라이언트용 RetrievedSource 목록을 함께 반환한다.
 class RagQueryResponse(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     answer: str
-    sources: list[ParentChunkResult]
-    chunks_retrieved: int
+    sources: list[RetrievedSource]
+    warnings: list[str] = Field(default_factory=list)

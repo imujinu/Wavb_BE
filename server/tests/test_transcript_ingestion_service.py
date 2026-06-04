@@ -350,6 +350,7 @@ class FakeSearchChunkBuilder:
                 start_seconds=chunk.start_seconds,
                 end_seconds=chunk.end_seconds,
                 text=chunk.text,
+                text_morphemes=f"morpheme {chunk.chunk_index}",
             )
             for chunk in parent_chunks
         ]
@@ -433,6 +434,7 @@ async def test_ingest_creates_transcript_and_saves_chunks_and_search_chunks() ->
     # embedding이 첨부되어 있는지 확인
     assert saved_search_chunks[0].embedding == [0.1] * 1536
     assert saved_search_chunks[0].embedding_model == "text-embedding-3-small"
+    assert saved_search_chunks[0].text_morphemes == "morpheme 0"
     # 결과 객체 정합성 확인
     assert isinstance(result.transcript_id, UUID)
     assert result.segment_count == 2

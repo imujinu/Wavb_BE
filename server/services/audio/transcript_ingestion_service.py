@@ -366,6 +366,7 @@ class TranscriptIngestionService:
                     start_seconds=search_chunks[i].start_seconds,
                     end_seconds=search_chunks[i].end_seconds,
                     text=search_chunks[i].text,
+                    text_morphemes=search_chunks[i].text_morphemes,
                     metadata=search_chunks[i].metadata,
                     # EmbeddingService 기본 모델값과 동기화
                     embedding_model="text-embedding-3-small",

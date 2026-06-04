@@ -347,7 +347,7 @@ class RagRepository:
         self,
         morpheme_query: str,
         embedding: list[float],
-        transcript_id: UUID | None,
+        transcript_ids: list[UUID],
         user_id: UUID | None,
         top_k: int,
         keyword_weight: float = 0.6,
@@ -368,7 +368,7 @@ class RagRepository:
         파라미터:
             morpheme_query: 형태소 분석된 FTS 쿼리 (예: "다음 출시 일정 논의")
             embedding: 원문 쿼리 임베딩 벡터 (길이 1536)
-            transcript_id / user_id: 검색 범위 한정 필터 (None이면 미적용)
+            transcript_ids / user_id: 검색 범위 한정 필터
             top_k: 반환할 최대 hit 수
             keyword_weight / vector_weight: 채널별 RRF 기여 가중치 (0.6 / 0.4)
             rrf_k: RRF 완충 상수 — 클수록 상위·하위 순위 간 점수 차가 완만해짐 (관례값 60)
@@ -377,13 +377,13 @@ class RagRepository:
         #    각 결과는 자체 점수 기준 내림차순 정렬 상태다.
         keyword_hits = await self._search_by_keyword(
             morpheme_query,
-            transcript_id,
+            transcript_ids,
             user_id,
             top_k,
         )
         vector_hits = await self._search_by_vector(
             embedding,
-            transcript_id,
+            transcript_ids,
             user_id,
             top_k,
         )
@@ -426,7 +426,7 @@ class RagRepository:
     async def _search_by_keyword(
         self,
         morpheme_query: str,
-        transcript_id: UUID | None,
+        transcript_ids: list[UUID],
         user_id: UUID | None,
         top_k: int,
     ) -> list[SearchChunkHit]:
@@ -434,15 +434,19 @@ class RagRepository:
         # 동적 WHERE 절과 파라미터 목록 구성
         # $1은 항상 morpheme_query (ts_rank와 @@ 연산에 공통 사용)
         params: list[Any] = [morpheme_query]
+        # text_morphemes가 있는 기존 row라도 원문 text를 함께 검색해 영어/숫자 토큰 누락을 보완한다.
+        search_vector_sql = (
+            "to_tsvector('simple', "
+            "trim(coalesce(sc.text_morphemes, '') || ' ' || coalesce(sc.text, ''))"
+            ")"
+        )
         where_clauses = [
-            "to_tsvector('simple', coalesce(sc.text_morphemes, sc.text)) "
-            "@@ plainto_tsquery('simple', $1)"
+            f"{search_vector_sql} @@ plainto_tsquery('simple', $1)"
         ]
 
-        # transcript_id 필터 추가 — search_chunks 테이블에 직접 컬럼 존재
-        if transcript_id is not None:
-            params.append(transcript_id)
-            where_clauses.append(f"sc.transcript_id = ${len(params)}")
+        # transcript_ids 필터 추가 — search_chunks 테이블에 직접 컬럼 존재
+        params.append(transcript_ids)
+        where_clauses.append(f"sc.transcript_id = ANY(${len(params)}::uuid[])")
 
         # user_id 필터 추가 — transcripts 테이블과 JOIN 필요
         needs_join = user_id is not None
@@ -470,7 +474,7 @@ class RagRepository:
                 sc.text,
                 sc.embedding_model,
                 ts_rank(
-                    to_tsvector('simple', coalesce(sc.text_morphemes, sc.text)),
+                    {search_vector_sql},
                     plainto_tsquery('simple', $1)
                 ) AS score
             FROM search_chunks sc
@@ -502,7 +506,7 @@ class RagRepository:
     async def _search_by_vector(
         self,
         embedding: list[float],
-        transcript_id: UUID | None,
+        transcript_ids: list[UUID],
         user_id: UUID | None,
         top_k: int,
     ) -> list[SearchChunkHit]:
@@ -511,13 +515,13 @@ class RagRepository:
 
         기능 흐름:
             1. embedding을 vector literal로 변환
-            2. transcript_id / user_id 필터 조건 동적 추가
+            2. transcript_ids / user_id 필터 조건 동적 추가
             3. distance 오름차순(= score 내림차순), LIMIT top_k 쿼리 실행
             4. score = 1.0 - distance 로 변환하여 반환
 
         파라미터:
             embedding: 쿼리 임베딩 벡터 (예: [0.1, 0.2, ...], 길이 1536)
-            transcript_id: 검색 범위 한정용 transcript UUID
+            transcript_ids: 검색 범위 한정용 transcript UUID 목록
             user_id: 검색 범위 한정용 user UUID
             top_k: 반환할 최대 결과 수
         """
@@ -526,10 +530,9 @@ class RagRepository:
         params: list[Any] = [vector_literal]
         where_clauses: list[str] = []
 
-        # transcript_id 필터 추가
-        if transcript_id is not None:
-            params.append(transcript_id)
-            where_clauses.append(f"sc.transcript_id = ${len(params)}")
+        # transcript_ids 필터 추가
+        params.append(transcript_ids)
+        where_clauses.append(f"sc.transcript_id = ANY(${len(params)}::uuid[])")
 
         # user_id 필터 추가 — transcripts 테이블과 JOIN 필요
         needs_join = user_id is not None
@@ -608,11 +611,13 @@ class RagRepository:
         rows = await self._connection.fetch(
             """
             SELECT
-                id, transcript_id, chunk_index,
-                topic, subtopic, keywords, speaker_labels,
-                start_seconds, end_seconds, text, summary, metadata
-            FROM chunks
-            WHERE id = ANY($1::uuid[])
+                c.id, c.transcript_id, t.title AS transcript_title, c.chunk_index,
+                c.topic, c.subtopic, c.keywords, c.speaker_labels,
+                c.segment_start_index, c.segment_end_index,
+                c.start_seconds, c.end_seconds, c.text, c.summary, c.metadata
+            FROM chunks c
+            JOIN transcripts t ON c.transcript_id = t.id
+            WHERE c.id = ANY($1::uuid[])
             """,
             parent_chunk_ids,
         )
@@ -622,11 +627,14 @@ class RagRepository:
             ParentChunkResult(
                 id=row["id"],
                 transcript_id=row["transcript_id"],
+                transcript_title=row["transcript_title"],
                 chunk_index=row["chunk_index"],
                 topic=row["topic"],
                 subtopic=row["subtopic"],
                 keywords=list(row["keywords"]) if row["keywords"] else [],
                 speaker_labels=list(row["speaker_labels"]) if row["speaker_labels"] else [],
+                segment_start_index=row["segment_start_index"],
+                segment_end_index=row["segment_end_index"],
                 start_seconds=float(row["start_seconds"]) if row["start_seconds"] is not None else None,
                 end_seconds=float(row["end_seconds"]) if row["end_seconds"] is not None else None,
                 text=row["text"],

@@ -8,7 +8,9 @@ from collections.abc import AsyncIterator
 from fastapi import APIRouter, Depends
 
 from db.connection import DatabaseConnection, get_connection
+from dependencies.auth import get_current_user
 from repositories.rag_repository import RagRepository
+from schemas.auth import CurrentUser
 from schemas.rag import RagQueryRequest, RagQueryResponse
 from services.rag.embedding_service import EmbeddingService
 from services.rag.morpheme_service import MorphemeService
@@ -51,6 +53,7 @@ def get_rag_response_service() -> RagResponseService:
 @router.post("/query", response_model=RagQueryResponse)
 async def rag_query(
     request: RagQueryRequest,
+    current_user: CurrentUser = Depends(get_current_user),
     rag_query_service: RagQueryService = Depends(get_rag_query_service),
     rag_response_service: RagResponseService = Depends(get_rag_response_service),
 ) -> RagQueryResponse:
@@ -58,27 +61,27 @@ async def rag_query(
     기능 요약: 자연어 질의를 하이브리드 검색 → LLM 답변 생성 순으로 처리해 응답한다.
 
     기능 흐름:
-        1. RagQueryService.search(...) → 하이브리드 검색 + parent hydration으로 근거 청크 조회
-        2. RagResponseService.generate(query, parent_chunks) → 청크 범위 내 한국어 답변 생성
-        3. answer + sources + chunks_retrieved를 RagQueryResponse로 묶어 반환
+        1. RagQueryService.search(...) → 하이브리드 검색 + RetrievedSource 변환
+        2. RagResponseService.generate(query, sources) → source 범위 내 한국어 답변 생성
+        3. answer + sources + warnings를 RagQueryResponse로 묶어 반환
 
     파라미터:
-        request: query(질의), transcript_id(범위 한정), user_id(임시), top_k(반환 수)를 담은 요청 모델
+        request: query(질의), transcript_ids(범위 한정), top_k(반환 수)를 담은 요청 모델
     """
     # 1. retrieval — 형태소/임베딩 전처리 후 하이브리드 검색으로 근거 청크 확보
-    parent_chunks = await rag_query_service.search(
+    sources = await rag_query_service.search(
         query=request.query,
-        transcript_id=request.transcript_id,
-        user_id=request.user_id,
+        transcript_ids=request.transcript_ids,
+        user_id=current_user.user_id,
         top_k=request.top_k,
     )
 
-    # 2. generation — 검색된 청크를 context로 LLM 답변 생성
-    answer = await rag_response_service.generate(request.query, parent_chunks)
+    # 2. generation — 검색된 source를 context로 LLM 답변 생성
+    answer = await rag_response_service.generate(request.query, sources)
 
-    # 3. 답변 + 근거 청크 + 검색 청크 수를 응답으로 반환
+    # 3. 답변 + 근거 source를 응답으로 반환
     return RagQueryResponse(
         answer=answer,
-        sources=parent_chunks,
-        chunks_retrieved=len(parent_chunks),
+        sources=sources,
+        warnings=[],
     )
