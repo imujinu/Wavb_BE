@@ -6,7 +6,7 @@ from typing import Any
 from fastapi import HTTPException, status
 from openai import APIError, AsyncOpenAI
 
-from schemas.rag import DomainType, SegmentCreate
+from schemas.rag import SegmentCreate
 from settings import get_settings
 
 
@@ -33,7 +33,6 @@ class ContextChunkPlanGroup:
 class ContextChunkPlanningService:
     def __init__(
         self,
-        meeting_fallback_max_seconds: float = 180.0,
         lecture_fallback_max_seconds: float = 300.0,
     ) -> None:
         settings = get_settings()
@@ -44,14 +43,12 @@ class ContextChunkPlanningService:
             )
         self._client = AsyncOpenAI(api_key=settings.openai_api_key)
         self._model = settings.openai_summary_model
-        self._meeting_fallback_max_seconds = meeting_fallback_max_seconds
         self._lecture_fallback_max_seconds = lecture_fallback_max_seconds
 
     # segment 목록을 LLM에 전달해 요약자료용 맥락 chunk plan을 생성합니다.
     # LLM 호출 또는 응답 검증에 실패하면 시간 기준 fallback plan을 반환합니다.
     async def plan_chunks(
         self,
-        domain_type: DomainType,
         segments: list[SegmentCreate],
     ) -> list[ContextChunkPlanGroup]:
         ordered_segments = self._ordered_non_empty_segments(segments)
@@ -59,7 +56,7 @@ class ContextChunkPlanningService:
             return []
 
         try:
-            response_content = await self._request_plan(domain_type, ordered_segments)
+            response_content = await self._request_plan(ordered_segments)
             groups = self._parse_plan(response_content)
             self._validate_plan(groups, ordered_segments)
             return groups
@@ -68,16 +65,14 @@ class ContextChunkPlanningService:
                 "Context chunk planning failed; falling back to deterministic plan."
             )
             return self._fallback_plan(
-                domain_type,
                 ordered_segments,
                 error_message=f"{type(exc).__name__}: {exc}",
             )
 
     # OpenAI chat completion을 호출해 연속 segment range 기반 chunk plan JSON을 요청합니다.
-    # domain_type에 따라 회의와 강의의 맥락 경계 기준을 다르게 설명합니다.
+    # 강의의 개념/소주제 흐름을 기준으로 맥락 경계를 결정하도록 요청합니다.
     async def _request_plan(
         self,
-        domain_type: DomainType,
         segments: list[SegmentCreate],
     ) -> str:
         try:
@@ -87,7 +82,7 @@ class ContextChunkPlanningService:
                 response_format={"type": "json_object"},
                 messages=[
                     {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": self._build_prompt(domain_type, segments)},
+                    {"role": "user", "content": self._build_prompt(segments)},
                 ],
             )
         except APIError as exc:
@@ -110,21 +105,13 @@ class ContextChunkPlanningService:
     # segment index는 누락이나 중복 없이 연속 range로 반환하도록 요구합니다.
     def _build_prompt(
         self,
-        domain_type: DomainType,
         segments: list[SegmentCreate],
     ) -> str:
-        if domain_type == "meeting":
-            domain_instruction = (
-                "회의 transcript입니다. 하나의 안건, 논의 흐름, 질문-답변, 결정/액션 아이템 "
-                "단위로 연속 segment를 묶으세요. 화자 변경만으로 나누지 말고 짧은 맞장구는 "
-                "앞뒤 맥락에 포함하세요."
-            )
-        else:
-            domain_instruction = (
-                "강의 transcript입니다. 하나의 개념, 소주제, 정의-예시-결론 흐름 단위로 "
-                "연속 segment를 묶으세요. 예시는 해당 개념 chunk에 포함하고 새 개념으로 "
-                "넘어갈 때 나누세요."
-            )
+        domain_instruction = (
+            "강의 transcript입니다. 하나의 개념, 소주제, 정의-예시-결론 흐름 단위로 "
+            "연속 segment를 묶으세요. 예시는 해당 개념 chunk에 포함하고 새 개념으로 "
+            "넘어갈 때 나누세요."
+        )
 
         segment_lines = "\n".join(
             json.dumps(
@@ -254,27 +241,20 @@ class ContextChunkPlanningService:
     # 이 기준은 주된 chunking 전략이 아니라 과도하게 긴 chunk를 막는 안전장치입니다.
     def _fallback_plan(
         self,
-        domain_type: DomainType,
         segments: list[SegmentCreate],
         error_message: str | None = None,
     ) -> list[ContextChunkPlanGroup]:
-        max_seconds = (
-            self._meeting_fallback_max_seconds
-            if domain_type == "meeting"
-            else self._lecture_fallback_max_seconds
-        )
         groups: list[ContextChunkPlanGroup] = []
         current_start = segments[0]
         current_end = segments[0]
 
         for segment in segments[1:]:
             projected_seconds = segment.end_seconds - current_start.start_seconds
-            if projected_seconds > max_seconds:
+            if projected_seconds > self._lecture_fallback_max_seconds:
                 groups.append(
                     self._to_fallback_group(
                         current_start,
                         current_end,
-                        max_seconds,
                         error_message,
                     )
                 )
@@ -282,27 +262,25 @@ class ContextChunkPlanningService:
             current_end = segment
 
         groups.append(
-            self._to_fallback_group(
-                current_start,
-                current_end,
-                max_seconds,
-                error_message,
+                self._to_fallback_group(
+                    current_start,
+                    current_end,
+                    error_message,
+                )
             )
-        )
         return groups
 
     def _to_fallback_group(
         self,
         start_segment: SegmentCreate,
         end_segment: SegmentCreate,
-        max_seconds: float,
         error_message: str | None,
     ) -> ContextChunkPlanGroup:
         return ContextChunkPlanGroup(
             segment_start_index=start_segment.segment_index,
             segment_end_index=end_segment.segment_index,
             topic=None,
-            reason=f"LLM planner fallback: {max_seconds:g}초 안전 기준",
+            reason=f"LLM planner fallback: {self._lecture_fallback_max_seconds:g}초 안전 기준",
             summary_hint=None,
             planning_method="fallback",
             planning_error=error_message,

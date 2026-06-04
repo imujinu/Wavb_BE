@@ -218,7 +218,6 @@ async def save_realtime_transcript(
     """
     ingestion_service = TranscriptIngestionService(repository=repository)
     result = await ingestion_service.ingest_realtime_segments(
-        domain_type=body.domain_type,
         title=body.title,
         duration_seconds=body.duration_seconds,
         segments=[s.model_dump() for s in body.segments],

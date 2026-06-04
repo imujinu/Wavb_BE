@@ -19,7 +19,6 @@ class RealtimeSaveRequest(BaseModel):
     - WebSocket 세션 중에는 클라이언트가 임시 전사 결과를 로컬에 누적합니다.
     - 녹음 완료 후 한 번에 저장해 부분 저장/롤백 복잡도를 없앱니다.
     """
-    domain_type: str       # "general", "legal", "medical", "science", "it", "religion"
     title: str
     duration_seconds: float
     segments: list[RealtimeSegmentInput]

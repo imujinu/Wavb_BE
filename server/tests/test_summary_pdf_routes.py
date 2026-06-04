@@ -20,7 +20,7 @@ def fake_current_user() -> CurrentUser:
 
 # 라우트 테스트용 가짜 서비스 — 실제 LLM/글꼴 의존 없이 결정적으로 동작한다.
 class FakeSummaryService:
-    async def summarize_for_template(self, transcript_text, template, title=None, domain_type=None):
+    async def summarize_for_template(self, transcript_text, template, title=None):
         # 템플릿 섹션 key에 더미 값을 채워 반환
         return {section.key: "요약" for section in template.sections}
 
@@ -34,7 +34,6 @@ def _make_transcript(full_text: str | None) -> TranscriptDetail:
     return TranscriptDetail(
         id=uuid4(),
         user_id=FAKE_USER_ID,
-        domain_type="meeting",
         title="주간 회의",
         full_text=full_text,
         summary=None,

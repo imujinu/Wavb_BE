@@ -11,11 +11,12 @@ from db.connection import DatabaseConnection, get_connection
 from dependencies.auth import get_current_user
 from repositories.rag_repository import RagRepository
 from schemas.auth import CurrentUser
-from schemas.rag import SummaryDocumentCreate
+from schemas.rag import LectureSummaryResponse, SummaryDocumentCreate
 from settings import get_settings
 from services.summary.pdf_templates import TemplateSpec, get_template, list_templates
 from services.summary.summary_pdf_service import SummaryPdfService
 from services.summary.summary_service import SummaryService
+from services.summary.lecture_summary_service import LectureSummaryService
 from services.summary.templated_summary_service import TemplatedSummaryService
 from services.audio.transcript_ingestion_service import TranscriptIngestionService
 from services.audio.transcription_service import TranscriptionService
@@ -24,7 +25,6 @@ from services.audio.transcription_service import TranscriptionService
 router = APIRouter(prefix="/audio", tags=["audio"])
 
 ALLOWED_EXTENSIONS = {".m4a", ".mp3", ".wav", ".webm"}
-ALLOWED_DOMAIN_TYPES = {"general", "legal", "medical", "science", "it", "religion"}
 # 허용 언어 조합: 한국어 단독, 영어 단독, 한국어+영어 혼합만 허용
 ALLOWED_LANGUAGE_SETS = [{"ko"}, {"en"}, {"ko", "en"}]
 
@@ -67,15 +67,6 @@ def validate_languages(languages: list[str]) -> None:
         )
 
 
-def validate_domain_type(domain_type: str) -> None:
-    if domain_type not in ALLOWED_DOMAIN_TYPES:
-        allowed = ", ".join(sorted(ALLOWED_DOMAIN_TYPES))
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"유효하지 않은 domain_type입니다. 허용 값: {allowed}",
-        )
-
-
 def validate_audio_file(file: UploadFile) -> None:
     filename = file.filename or ""
     suffix = f".{filename.rsplit('.', 1)[-1].lower()}" if "." in filename else ""
@@ -112,14 +103,12 @@ async def create_audio_transcript(
     file_uri: str = Form(...),
     file_name: str = Form(...),
     languages: list[str] = Form(...),
-    domain_type: str = Form(...),
     # user_id는 클라이언트 입력 대신 JWT 토큰에서 추출한 인증 사용자로 대체
     current_user: CurrentUser = Depends(get_current_user),
     repository: RagRepository = Depends(get_rag_repository),
 ) -> AudioTranscriptResponse:
     validate_audio_file(file)
     validate_languages(languages)
-    validate_domain_type(domain_type)
 
     ingestion_service = TranscriptIngestionService(repository)
     # 1. 인증된 사용자의 user_id를 토큰에서 주입하여 인제스션 실행
@@ -128,7 +117,6 @@ async def create_audio_transcript(
         file_uri=file_uri,
         file_name=file_name,
         languages=languages,
-        domain_types=[domain_type],
         user_id=current_user.user_id,
     )
     return AudioTranscriptResponse(
@@ -151,6 +139,14 @@ def get_templated_summary_service() -> TemplatedSummaryService:
 # 필요성: PDF 렌더 서비스를 DI로 분리해 테스트에서 override 가능하게 한다.
 def get_summary_pdf_service() -> SummaryPdfService:
     return SummaryPdfService()
+
+
+# LectureSummaryService 인스턴스를 생성하는 의존성.
+# 필요성: transcript/chunk 저장소를 사용하는 새 강의 요약 데이터 API를 테스트에서 쉽게 교체한다.
+def get_lecture_summary_service(
+    repository: RagRepository = Depends(get_rag_repository),
+) -> LectureSummaryService:
+    return LectureSummaryService(repository)
 
 
 # PDF 바이트를 다운로드 응답(StreamingResponse)으로 변환하는 공통 헬퍼.
@@ -186,6 +182,33 @@ def list_summary_templates() -> list[TemplateSpec]:
     """
     # 1. 등록된 전체 템플릿 반환 — 앱이 폼 목록을 동적으로 렌더링한다
     return list_templates()
+
+
+@router.post(
+    "/transcripts/{transcript_id}/summary",
+    response_model=LectureSummaryResponse,
+)
+async def create_lecture_summary(
+    transcript_id: UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+    summary_service: LectureSummaryService = Depends(get_lecture_summary_service),
+) -> LectureSummaryResponse:
+    """
+    기능 요약: 저장된 transcript와 chunk를 바탕으로 강의 요약 데이터 JSON을 생성하거나 기존 데이터를 반환한다.
+
+    기능 흐름:
+        1. LectureSummaryService.get_or_create_summary(...) 호출
+        2. 서비스 내부에서 소유권/상태/chunk 준비 여부를 검증
+        3. 기존 lecture_summaries가 있으면 재사용, 없으면 LLM 생성 후 저장
+
+    파라미터:
+        transcript_id: 요약할 transcript UUID
+    """
+    # 1. 인증 사용자 기준으로 강의 요약 데이터 생성/조회
+    return await summary_service.get_or_create_summary(
+        transcript_id,
+        current_user.user_id,
+    )
 
 
 @router.post("/transcripts/{transcript_id}/summary-pdf")
@@ -241,7 +264,6 @@ async def create_summary_pdf(
         transcript_text=transcript.full_text,
         template=template,
         title=transcript.title,
-        domain_type=transcript.domain_type,
     )
 
     # 4. 수정→재렌더를 위해 구조화 payload를 영속화

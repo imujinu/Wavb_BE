@@ -1,10 +1,23 @@
-import asyncio
 import json
 from typing import Any
 from uuid import UUID, uuid4
 
 from db.connection import DatabaseConnection
-from schemas.rag import ChunkCreate, ChunkRow, ParentChunkResult, SearchChunkCreate, SearchChunkHit, SegmentCreate, SummaryDocumentCreate, SummaryDocumentDetail, TranscriptCreate, TranscriptDetail, TranscriptResultUpdate
+from schemas.rag import (
+    ChunkCreate,
+    ChunkRow,
+    LectureSummaryCreate,
+    LectureSummaryDetail,
+    ParentChunkResult,
+    SearchChunkCreate,
+    SearchChunkHit,
+    SegmentCreate,
+    SummaryDocumentCreate,
+    SummaryDocumentDetail,
+    TranscriptCreate,
+    TranscriptDetail,
+    TranscriptResultUpdate,
+)
 
 
 class RagRepository:
@@ -17,16 +30,15 @@ class RagRepository:
         row = await self._connection.fetchrow(
             """
             INSERT INTO transcripts (
-              id, user_id, domain_type, title, source_audio_uri,
+              id, user_id, title, source_audio_uri,
               original_filename, mime_type, duration_seconds, language,
               stt_model, status
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             RETURNING id
             """,
             transcript_id,
             transcript.user_id,
-            transcript.domain_type,
             transcript.title,
             transcript.source_audio_uri,
             transcript.original_filename,
@@ -88,7 +100,7 @@ class RagRepository:
         if user_id is not None:
             row = await self._connection.fetchrow(
                 """
-                SELECT id, user_id, domain_type, title, full_text, summary,
+                SELECT id, user_id, title, full_text, summary,
                        duration_seconds, language, status, created_at
                 FROM transcripts
                 WHERE id = $1 AND user_id = $2
@@ -99,7 +111,7 @@ class RagRepository:
         else:
             row = await self._connection.fetchrow(
                 """
-                SELECT id, user_id, domain_type, title, full_text, summary,
+                SELECT id, user_id, title, full_text, summary,
                        duration_seconds, language, status, created_at
                 FROM transcripts
                 WHERE id = $1
@@ -115,7 +127,6 @@ class RagRepository:
         return TranscriptDetail(
             id=row["id"],
             user_id=row["user_id"],
-            domain_type=row["domain_type"],
             title=row["title"],
             full_text=row["full_text"],
             summary=row["summary"],
@@ -181,14 +192,14 @@ class RagRepository:
         await self._connection.executemany(
             """
             INSERT INTO chunks (
-              id, transcript_id, domain_type, chunk_index, chunk_strategy,
+              id, transcript_id, chunk_index, chunk_strategy,
               segment_start_index, segment_end_index, start_seconds, end_seconds,
               text, summary, topic, subtopic, keywords, speaker_labels,
               metadata, embedding_model, embedding
             )
             VALUES (
               $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-              $11, $12, $13, $14, $15, $16::jsonb, $17, $18::vector
+              $11, $12, $13, $14, $15::jsonb, $16, $17::vector
             )
             ON CONFLICT (transcript_id, chunk_strategy, chunk_index) DO UPDATE
             SET text = EXCLUDED.text,
@@ -209,7 +220,6 @@ class RagRepository:
                 (
                     uuid4(),
                     transcript_id,
-                    chunk.domain_type,
                     chunk.chunk_index,
                     chunk.chunk_strategy,
                     chunk.segment_start_index,
@@ -234,8 +244,9 @@ class RagRepository:
     async def fetch_chunks_by_transcript(self, transcript_id: UUID) -> list[ChunkRow]:
         rows = await self._connection.fetch(
             """
-            SELECT id, chunk_index, segment_start_index, segment_end_index,
-                   start_seconds, end_seconds, text, metadata
+            SELECT id, chunk_index, topic, subtopic, keywords, speaker_labels,
+                   segment_start_index, segment_end_index, start_seconds,
+                   end_seconds, text, summary, metadata
             FROM chunks
             WHERE transcript_id = $1
             ORDER BY chunk_index
@@ -247,12 +258,17 @@ class RagRepository:
             ChunkRow(
                 id=row["id"],
                 chunk_index=row["chunk_index"],
+                topic=row["topic"],
+                subtopic=row["subtopic"],
+                keywords=list(row["keywords"]) if row["keywords"] else [],
+                speaker_labels=list(row["speaker_labels"]) if row["speaker_labels"] else [],
                 segment_start_index=row["segment_start_index"],
                 segment_end_index=row["segment_end_index"],
                 start_seconds=float(row["start_seconds"]) if row["start_seconds"] is not None else None,
                 end_seconds=float(row["end_seconds"]) if row["end_seconds"] is not None else None,
                 text=row["text"],
-                metadata=row["metadata"] if row["metadata"] is not None else {},
+                summary=row["summary"],
+                metadata=self._to_dict(row["metadata"]),
             )
             for row in rows
         ]
@@ -323,7 +339,7 @@ class RagRepository:
             ],
         )
 
-    # keyword 검색과 vector 검색을 병렬로 실행하여 RRF(Reciprocal Rank Fusion)로 최종 순위를 결정한다.
+    # keyword 검색과 vector 검색 결과를 RRF(Reciprocal Rank Fusion)로 합쳐 최종 순위를 결정한다.
     # RRF는 각 채널의 원점수(ts_rank vs cosine similarity)를 직접 더하지 않고 "순위"만 사용한다.
     # ts_rank(0.0x대)와 vector similarity(0.7~0.9대)는 스케일이 달라 가중 합산이 왜곡되는데,
     # 순위 기반 융합은 이 스케일 불일치를 원천적으로 제거해 안정적인 하이브리드 순위를 만든다.
@@ -357,10 +373,19 @@ class RagRepository:
             keyword_weight / vector_weight: 채널별 RRF 기여 가중치 (0.6 / 0.4)
             rrf_k: RRF 완충 상수 — 클수록 상위·하위 순위 간 점수 차가 완만해짐 (관례값 60)
         """
-        # 1. keyword 검색과 vector 검색을 병렬 실행 (각 결과는 자체 점수 기준 내림차순 정렬 상태)
-        keyword_hits, vector_hits = await asyncio.gather(
-            self._search_by_keyword(morpheme_query, transcript_id, user_id, top_k),
-            self._search_by_vector(embedding, transcript_id, user_id, top_k),
+        # 1. 같은 asyncpg connection에서 동시에 쿼리하면 InterfaceError가 발생하므로 순차 실행한다.
+        #    각 결과는 자체 점수 기준 내림차순 정렬 상태다.
+        keyword_hits = await self._search_by_keyword(
+            morpheme_query,
+            transcript_id,
+            user_id,
+            top_k,
+        )
+        vector_hits = await self._search_by_vector(
+            embedding,
+            transcript_id,
+            user_id,
+            top_k,
         )
 
         # 2. RRF 점수 누적 — 리스트 순서가 곧 순위이므로 enumerate 인덱스 + 1을 rank로 사용
@@ -583,7 +608,7 @@ class RagRepository:
         rows = await self._connection.fetch(
             """
             SELECT
-                id, transcript_id, domain_type, chunk_index,
+                id, transcript_id, chunk_index,
                 topic, subtopic, keywords, speaker_labels,
                 start_seconds, end_seconds, text, summary, metadata
             FROM chunks
@@ -597,7 +622,6 @@ class RagRepository:
             ParentChunkResult(
                 id=row["id"],
                 transcript_id=row["transcript_id"],
-                domain_type=row["domain_type"],
                 chunk_index=row["chunk_index"],
                 topic=row["topic"],
                 subtopic=row["subtopic"],
@@ -607,7 +631,7 @@ class RagRepository:
                 end_seconds=float(row["end_seconds"]) if row["end_seconds"] is not None else None,
                 text=row["text"],
                 summary=row["summary"],
-                metadata=dict(row["metadata"]) if row["metadata"] is not None else {},
+                metadata=self._to_dict(row["metadata"]),
             )
             for row in rows
         ]
@@ -644,6 +668,99 @@ class RagRepository:
             document.model,
         )
         return row["id"] if row else document_id
+
+    # transcript 단위 강의 요약 데이터를 조회한다.
+    # 이미 생성된 payload가 있으면 API가 LLM 재호출 없이 즉시 반환하기 위해 사용한다.
+    async def get_lecture_summary_by_transcript(
+        self,
+        transcript_id: UUID,
+        user_id: UUID | None = None,
+    ) -> LectureSummaryDetail | None:
+        """
+        기능 요약: lecture_summaries에서 transcript_id로 1건 조회한다. user_id가 있으면 소유자까지 필터한다.
+
+        기능 흐름:
+            1. user_id 유무에 따라 WHERE 조건을 구성
+            2. fetchrow로 기존 강의 요약을 조회
+            3. payload(JSONB)를 dict로 정규화해 LectureSummaryDetail로 반환
+
+        파라미터:
+            transcript_id: 요약 데이터가 연결된 transcript UUID
+            user_id: 소유권 검증용 사용자 UUID. None이면 내부 조회로 간주
+        """
+        # 1. user_id가 있으면 요약 row의 소유자를 함께 확인한다
+        if user_id is not None:
+            row = await self._connection.fetchrow(
+                """
+                SELECT id, transcript_id, user_id, payload, model
+                FROM lecture_summaries
+                WHERE transcript_id = $1 AND user_id = $2
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                transcript_id,
+                user_id,
+            )
+        else:
+            row = await self._connection.fetchrow(
+                """
+                SELECT id, transcript_id, user_id, payload, model
+                FROM lecture_summaries
+                WHERE transcript_id = $1
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                transcript_id,
+            )
+
+        # 2. 기존 요약이 없으면 생성 경로로 진행하도록 None 반환
+        if row is None:
+            return None
+
+        # 3. JSONB payload를 dict로 정규화
+        payload = self._to_dict(row["payload"])
+
+        return LectureSummaryDetail(
+            id=row["id"],
+            transcript_id=row["transcript_id"],
+            user_id=row["user_id"],
+            payload=payload,
+            model=row["model"],
+        )
+
+    # 새 강의 요약 데이터를 lecture_summaries에 저장하고 생성 id를 반환한다.
+    # 같은 transcript에 대한 중복 요청은 호출 전에 get_lecture_summary_by_transcript()로 차단한다.
+    async def insert_lecture_summary(self, summary: LectureSummaryCreate) -> UUID:
+        """
+        기능 요약: lecture_summaries에 overview/contexts/keywords payload를 저장한다.
+
+        기능 흐름:
+            1. uuid4()로 summary id 발급
+            2. payload를 한글 손실 없는 JSONB 문자열로 직렬화
+            3. transcript_id unique 충돌 시 기존 payload를 유지하고 기존 id를 반환
+
+        파라미터:
+            summary: transcript_id, user_id, payload, model을 담은 저장 모델
+        """
+        # 1. 요약 id 발급 후 JSONB payload와 함께 저장한다
+        summary_id = uuid4()
+        row = await self._connection.fetchrow(
+            """
+            INSERT INTO lecture_summaries (
+              id, transcript_id, user_id, payload, model
+            )
+            VALUES ($1, $2, $3, $4::jsonb, $5)
+            ON CONFLICT (transcript_id) DO UPDATE
+            SET updated_at = lecture_summaries.updated_at
+            RETURNING id
+            """,
+            summary_id,
+            summary.transcript_id,
+            summary.user_id,
+            self._to_json(summary.payload),
+            summary.model,
+        )
+        return row["id"] if row else summary_id
 
     # 저장된 요약 문서를 id로 조회해 수정→재렌더 경로의 입력(template_id + payload)을 제공한다.
     async def get_summary_document_by_id(
@@ -689,16 +806,14 @@ class RagRepository:
             return None
 
         # 3. payload는 asyncpg가 str(JSON)로 줄 수도, dict로 줄 수도 있으므로 dict로 정규화
-        payload = row["payload"]
-        if isinstance(payload, str):
-            payload = json.loads(payload)
+        payload = self._to_dict(row["payload"])
 
         return SummaryDocumentDetail(
             id=row["id"],
             transcript_id=row["transcript_id"],
             user_id=row["user_id"],
             template_id=row["template_id"],
-            payload=payload if isinstance(payload, dict) else {},
+            payload=payload,
             model=row["model"],
         )
 
@@ -753,6 +868,23 @@ class RagRepository:
     # JSONB column에 넣을 metadata를 한글 손실 없이 문자열로 직렬화한다.
     def _to_json(self, value: dict[str, Any]) -> str:
         return json.dumps(value, ensure_ascii=False)
+
+    # JSONB 조회 결과는 실행 환경에 따라 dict 또는 JSON 문자열로 들어올 수 있다.
+    def _to_dict(self, value: Any) -> dict[str, Any]:
+        if value is None:
+            return {}
+        if isinstance(value, dict):
+            return value
+        if isinstance(value, str):
+            try:
+                parsed = json.loads(value)
+            except json.JSONDecodeError:
+                return {}
+            return parsed if isinstance(parsed, dict) else {}
+        try:
+            return dict(value)
+        except (TypeError, ValueError):
+            return {}
 
     # pgvector가 adapter 없이도 받을 수 있는 literal 문자열로 embedding을 직렬화한다.
     def _to_vector_literal(self, embedding: list[float] | None) -> str | None:

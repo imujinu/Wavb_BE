@@ -6,7 +6,7 @@ from typing import Any
 from fastapi import HTTPException, status
 from openai import APIError, AsyncOpenAI
 
-from schemas.rag import ChunkCreate, DomainType
+from schemas.rag import ChunkCreate
 from settings import get_settings
 
 
@@ -84,8 +84,8 @@ class ChunkMetadataService:
 
         return index, self._apply_metadata(chunk, metadata)
 
-    # OpenAI chat completion을 호출해 청크별 metadata JSON을 생성합니다.
-    # prompt에는 domain_type과 chunk text를 함께 전달해 회의/강의별 추출 기준을 분리합니다.
+    # OpenAI chat completion을 호출해 강의 청크별 metadata JSON을 생성합니다.
+    # concepts와 learning_points를 중심으로 후속 강의 요약 데이터의 재료를 만든다.
     async def _create_metadata(self, chunk: ChunkCreate) -> ChunkMetadata:
         try:
             response = await self._client.chat.completions.create(
@@ -115,10 +115,10 @@ class ChunkMetadataService:
                 detail="Chunk metadata provider returned an empty response.",
             )
 
-        return self._parse_metadata(content, chunk.domain_type)
+        return self._parse_metadata(content)
 
-    # domain_type에 따라 서로 다른 metadata 필드를 요구하는 프롬프트를 생성합니다.
-    # meeting은 결정/할 일, lecture는 개념/학습 포인트를 중심으로 추출합니다.
+    # 강의 요약 데이터 생성에 필요한 metadata 필드를 요구하는 프롬프트를 생성합니다.
+    # concepts는 핵심 개념, learning_points는 학습자가 기억할 요점을 담는다.
     def _build_prompt(self, chunk: ChunkCreate) -> str:
         common_instruction = (
             "다음 transcript chunk만 근거로 요약자료 생성용 metadata를 생성하세요.\n"
@@ -126,16 +126,10 @@ class ChunkMetadataService:
             "반드시 JSON object만 반환하세요.\n"
             "공통 필드: topic, subtopic, keywords, summary\n"
         )
-        if chunk.domain_type == "meeting":
-            domain_instruction = (
-                "회의 chunk입니다. metadata 필드에는 decision_items, action_items 배열을 포함하세요.\n"
-                "decision_items는 확정된 결정만, action_items는 담당자/할 일이 드러난 내용만 넣으세요."
-            )
-        else:
-            domain_instruction = (
-                "강의 chunk입니다. metadata 필드에는 concepts, learning_points 배열을 포함하세요.\n"
-                "concepts는 핵심 개념명, learning_points는 학습자가 기억해야 할 요점을 넣으세요."
-            )
+        domain_instruction = (
+            "강의 chunk입니다. metadata 필드에는 concepts, learning_points 배열을 포함하세요.\n"
+            "concepts는 핵심 개념명, learning_points는 학습자가 기억해야 할 요점을 넣으세요."
+        )
 
         return (
             f"{common_instruction}\n"
@@ -151,9 +145,9 @@ class ChunkMetadataService:
             f"Chunk text:\n{chunk.text}"
         )
 
-    # provider가 반환한 JSON 문자열을 안전하게 파싱하고 도메인별 metadata만 남깁니다.
+    # provider가 반환한 JSON 문자열을 안전하게 파싱하고 강의 metadata만 남깁니다.
     # 잘못된 타입이나 빈 문자열은 제거해 DB에 저장되는 metadata 품질을 일정하게 맞춥니다.
-    def _parse_metadata(self, raw_content: str, domain_type: DomainType) -> ChunkMetadata:
+    def _parse_metadata(self, raw_content: str) -> ChunkMetadata:
         data = json.loads(raw_content)
         if not isinstance(data, dict):
             raise ValueError("Chunk metadata response must be a JSON object.")
@@ -162,7 +156,7 @@ class ChunkMetadataService:
         if not isinstance(metadata, dict):
             metadata = {}
 
-        extra_metadata = self._extract_extra_metadata(metadata, domain_type)
+        extra_metadata = self._extract_extra_metadata(metadata)
         return ChunkMetadata(
             topic=self._clean_string(data.get("topic")),
             subtopic=self._clean_string(data.get("subtopic")),
@@ -171,19 +165,12 @@ class ChunkMetadataService:
             extra_metadata=extra_metadata,
         )
 
-    # 도메인별로 허용된 metadata key만 추려서 저장합니다.
-    # meeting은 decision/action item, lecture는 concept/learning point를 보존합니다.
+    # 강의 요약 생성에 필요한 metadata key만 추려서 저장합니다.
+    # concepts와 learning_points 외의 LLM 부가 필드는 저장하지 않는다.
     def _extract_extra_metadata(
         self,
         metadata: dict[str, Any],
-        domain_type: DomainType,
     ) -> dict[str, Any]:
-        if domain_type == "meeting":
-            return {
-                "decision_items": self._clean_strings(metadata.get("decision_items")),
-                "action_items": self._clean_strings(metadata.get("action_items")),
-            }
-
         return {
             "concepts": self._clean_strings(metadata.get("concepts")),
             "learning_points": self._clean_strings(metadata.get("learning_points")),

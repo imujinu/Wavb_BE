@@ -18,10 +18,9 @@ def make_segment(index: int, text: str) -> SegmentCreate:
 
 def make_service(response: str | Exception) -> ContextChunkPlanningService:
     service = ContextChunkPlanningService.__new__(ContextChunkPlanningService)
-    service._meeting_fallback_max_seconds = 180.0
     service._lecture_fallback_max_seconds = 300.0
 
-    async def fake_request_plan(domain_type, segments):
+    async def fake_request_plan(segments):
         if isinstance(response, Exception):
             raise response
         return response
@@ -33,18 +32,16 @@ def make_service(response: str | Exception) -> ContextChunkPlanningService:
 def test_context_chunk_planner_prompt_contains_domain_and_common_rules() -> None:
     service = make_service("{}")
 
-    meeting_prompt = service._build_prompt("meeting", [make_segment(0, "첫 번째 안건입니다.")])
-    lecture_prompt = service._build_prompt("lecture", [make_segment(0, "첫 번째 개념입니다.")])
+    lecture_prompt = service._build_prompt([make_segment(0, "첫 번째 개념입니다.")])
 
-    assert "하나의 안건" in meeting_prompt
     assert "하나의 개념" in lecture_prompt
-    assert "segment_end_index + 1" in meeting_prompt
-    assert "너무 짧은 chunk" in meeting_prompt
+    assert "segment_end_index + 1" in lecture_prompt
+    assert "너무 짧은 chunk" in lecture_prompt
     assert "의미가 덜 깨지는 지점" in lecture_prompt
 
 
 @pytest.mark.asyncio
-async def test_context_chunk_planner_parses_meeting_groups() -> None:
+async def test_context_chunk_planner_parses_groups() -> None:
     service = make_service(
         """
         {
@@ -69,7 +66,6 @@ async def test_context_chunk_planner_parses_meeting_groups() -> None:
     )
 
     groups = await service.plan_chunks(
-        "meeting",
         [
             make_segment(0, "출시 일정을 확인합니다."),
             make_segment(1, "다음 주가 적절합니다."),
@@ -103,7 +99,6 @@ async def test_context_chunk_planner_parses_lecture_groups() -> None:
     )
 
     groups = await service.plan_chunks(
-        "lecture",
         [
             make_segment(0, "역전파를 설명합니다."),
             make_segment(1, "손실 함수에서 기울기를 계산합니다."),
@@ -122,7 +117,6 @@ async def test_context_chunk_planner_falls_back_when_json_is_invalid() -> None:
     service = make_service("not-json")
 
     groups = await service.plan_chunks(
-        "meeting",
         [
             make_segment(0, "첫 번째 안건입니다."),
             make_segment(1, "계속 같은 안건입니다."),
@@ -131,8 +125,8 @@ async def test_context_chunk_planner_falls_back_when_json_is_invalid() -> None:
         ],
     )
 
-    assert [group.segment_start_index for group in groups] == [0, 3]
-    assert [group.segment_end_index for group in groups] == [2, 3]
+    assert [group.segment_start_index for group in groups] == [0]
+    assert [group.segment_end_index for group in groups] == [3]
     assert all("fallback" in group.reason for group in groups)
 
 
@@ -150,7 +144,6 @@ async def test_context_chunk_planner_falls_back_when_range_is_invalid() -> None:
     )
 
     groups = await service.plan_chunks(
-        "lecture",
         [
             make_segment(0, "개념 하나."),
             make_segment(1, "누락되면 안 됩니다."),
