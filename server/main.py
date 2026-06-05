@@ -11,6 +11,7 @@ from routes.files import router as files_router
 from routes.oauth import router as oauth_router
 from routes.rag import router as rag_router
 from routes.realtime import router as realtime_router
+from routes.work_items import router as work_items_router
 from settings import get_settings
 
 logging.basicConfig(
@@ -39,6 +40,7 @@ app.include_router(files_router)
 app.include_router(oauth_router)
 app.include_router(rag_router)
 app.include_router(realtime_router)
+app.include_router(work_items_router)
 app.mount(
     settings.upload_public_path,
     StaticFiles(directory=settings.upload_storage_dir),
