@@ -15,6 +15,13 @@ class Settings(BaseSettings):
     )
     tavily_api_key: str = Field("", alias="TAVILY_API_KEY")
     web_search_max_results: int = Field(5, alias="WEB_SEARCH_MAX_RESULTS")
+    libreoffice_path: str = Field("", alias="LIBREOFFICE_PATH")
+    document_conversion_timeout_seconds: int = Field(
+        60,
+        alias="DOCUMENT_CONVERSION_TIMEOUT_SECONDS",
+    )
+    upload_storage_dir: str = Field("uploads", alias="UPLOAD_STORAGE_DIR")
+    upload_public_path: str = Field("/uploads", alias="UPLOAD_PUBLIC_PATH")
     audio_transcription_concurrency: int = Field(
         3,
         alias="AUDIO_TRANSCRIPTION_CONCURRENCY",

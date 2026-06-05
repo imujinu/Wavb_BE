@@ -140,8 +140,29 @@ class SearchChunkBuilder:
                 "grouping_strategy": "adaptive_segments_v1",
                 "segment_count": len(segments),
             },
+            source_type=self._source_type(segments),
+            source_page_start=self._min_value(s.source_page_start for s in segments),
+            source_page_end=self._max_value(s.source_page_end for s in segments),
+            source_slide_start=self._min_value(s.source_slide_start for s in segments),
+            source_slide_end=self._max_value(s.source_slide_end for s in segments),
+            source_start_seconds=self._min_value(s.source_start_seconds for s in segments),
+            source_end_seconds=self._max_value(s.source_end_seconds for s in segments),
         )
 
     # segments의 text.strip()을 공백으로 합쳐 단일 문자열로 반환한다.
     def _join_text(self, segments: list[SegmentCreate]) -> str:
         return " ".join(seg.text.strip() for seg in segments if seg.text.strip())
+
+    def _source_type(self, segments: list[SegmentCreate]) -> str | None:
+        source_types = {segment.source_type for segment in segments if segment.source_type}
+        if len(source_types) == 1:
+            return next(iter(source_types))
+        return None
+
+    def _min_value(self, values) -> float | int | None:
+        present = [value for value in values if value is not None]
+        return min(present) if present else None
+
+    def _max_value(self, values) -> float | int | None:
+        present = [value for value in values if value is not None]
+        return max(present) if present else None

@@ -97,7 +97,7 @@ def test_audio_transcripts_persists_stt_flow(monkeypatch) -> None:
             self.repository = repository
 
         async def ingest_upload(
-            self, file, file_uri, file_name, languages, user_id=None
+            self, file, file_uri, file_name, user_id=None
         ):
             assert file_name == "주간회의.mp3"
             # JWT에서 주입된 user_id가 올바르게 전달됐는지 검증
@@ -122,7 +122,6 @@ def test_audio_transcripts_persists_stt_flow(monkeypatch) -> None:
             data={
                 "file_uri": "upload://주간회의.mp3",
                 "file_name": "주간회의.mp3",
-                "languages": "ko",
             },
             files={"file": ("주간회의.mp3", b"fake audio", "audio/mpeg")},
         )

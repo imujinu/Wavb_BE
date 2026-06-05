@@ -110,3 +110,33 @@ def test_max_chars_and_seconds_not_exceeded() -> None:
         assert len(child.text) <= 800
         if child.start_seconds is not None and child.end_seconds is not None:
             assert child.end_seconds - child.start_seconds <= 90
+
+
+def test_search_chunk_builder_propagates_source_range() -> None:
+    chunk = make_chunk_row(chunk_index=0, seg_start=0, seg_end=1)
+    segments = [
+        SegmentCreate(
+            segment_index=0,
+            start_seconds=0.0,
+            end_seconds=1.0,
+            text="첫 슬라이드",
+            source_type="ppt",
+            source_slide_start=3,
+            source_slide_end=3,
+        ),
+        SegmentCreate(
+            segment_index=1,
+            start_seconds=1.0,
+            end_seconds=2.0,
+            text="다음 슬라이드",
+            source_type="ppt",
+            source_slide_start=4,
+            source_slide_end=4,
+        ),
+    ]
+
+    children = SearchChunkBuilder(max_chars=800, max_seconds=90).build([chunk], segments)
+
+    assert children[0].source_type == "ppt"
+    assert children[0].source_slide_start == 3
+    assert children[0].source_slide_end == 4

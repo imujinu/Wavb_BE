@@ -17,6 +17,7 @@ from schemas.rag import (
     TranscriptCreate,
     TranscriptDetail,
     TranscriptResultUpdate,
+    UploadedFileDetail,
 )
 
 
@@ -140,6 +141,46 @@ class RagRepository:
             created_at=row["created_at"],
         )
 
+    # 인증 사용자가 업로드한 원본 파일 목록을 최신순으로 조회한다.
+    async def list_transcripts_by_user(
+        self,
+        user_id: UUID,
+    ) -> list[UploadedFileDetail]:
+        """
+        기능 요약: 사용자별 저장 파일 목록 화면에 필요한 transcript 메타데이터를 조회한다.
+
+        기능 흐름:
+            1. transcripts.user_id로 소유 파일만 필터링한다.
+            2. created_at DESC로 최신 업로드부터 정렬한다.
+            3. source_audio_uri를 API 응답의 file_uri로 매핑한다.
+
+        파라미터:
+            user_id: 인증 사용자 UUID (예: UUID("aaaaaaaa-..."))
+        """
+        rows = await self._connection.fetch(
+            """
+            SELECT id, title, source_audio_uri, original_filename,
+                   mime_type, status, created_at
+            FROM transcripts
+            WHERE user_id = $1
+            ORDER BY created_at DESC
+            """,
+            user_id,
+        )
+
+        return [
+            UploadedFileDetail(
+                transcript_id=row["id"],
+                title=row["title"],
+                file_uri=row["source_audio_uri"],
+                original_filename=row["original_filename"],
+                mime_type=row["mime_type"],
+                status=row["status"],
+                created_at=row["created_at"],
+            )
+            for row in rows
+        ]
+
     # STT 최소 단위 segment를 저장해서 playback, 재chunking, speaker 검색의 기준으로 사용한다.
     async def insert_segments(
         self,
@@ -153,16 +194,29 @@ class RagRepository:
             """
             INSERT INTO segments (
               id, transcript_id, segment_index, speaker_label,
-              start_seconds, end_seconds, text, confidence, raw_metadata
+              start_seconds, end_seconds, text, confidence, raw_metadata,
+              source_type, source_page_start, source_page_end,
+              source_slide_start, source_slide_end,
+              source_start_seconds, source_end_seconds
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
+            VALUES (
+              $1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb,
+              $10, $11, $12, $13, $14, $15, $16
+            )
             ON CONFLICT (transcript_id, segment_index) DO UPDATE
             SET speaker_label = EXCLUDED.speaker_label,
                 start_seconds = EXCLUDED.start_seconds,
                 end_seconds = EXCLUDED.end_seconds,
                 text = EXCLUDED.text,
                 confidence = EXCLUDED.confidence,
-                raw_metadata = EXCLUDED.raw_metadata
+                raw_metadata = EXCLUDED.raw_metadata,
+                source_type = EXCLUDED.source_type,
+                source_page_start = EXCLUDED.source_page_start,
+                source_page_end = EXCLUDED.source_page_end,
+                source_slide_start = EXCLUDED.source_slide_start,
+                source_slide_end = EXCLUDED.source_slide_end,
+                source_start_seconds = EXCLUDED.source_start_seconds,
+                source_end_seconds = EXCLUDED.source_end_seconds
             """,
             [
                 (
@@ -175,6 +229,13 @@ class RagRepository:
                     segment.text,
                     segment.confidence,
                     self._to_json(segment.raw_metadata),
+                    segment.source_type,
+                    segment.source_page_start,
+                    segment.source_page_end,
+                    segment.source_slide_start,
+                    segment.source_slide_end,
+                    segment.source_start_seconds,
+                    segment.source_end_seconds,
                 )
                 for segment in segments
             ],
@@ -195,11 +256,15 @@ class RagRepository:
               id, transcript_id, chunk_index, chunk_strategy,
               segment_start_index, segment_end_index, start_seconds, end_seconds,
               text, summary, topic, subtopic, keywords, speaker_labels,
-              metadata, embedding_model, embedding
+              metadata, embedding_model, embedding,
+              source_type, source_page_start, source_page_end,
+              source_slide_start, source_slide_end,
+              source_start_seconds, source_end_seconds
             )
             VALUES (
               $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-              $11, $12, $13, $14, $15::jsonb, $16, $17::vector
+              $11, $12, $13, $14, $15::jsonb, $16, $17::vector,
+              $18, $19, $20, $21, $22, $23, $24
             )
             ON CONFLICT (transcript_id, chunk_strategy, chunk_index) DO UPDATE
             SET text = EXCLUDED.text,
@@ -214,7 +279,14 @@ class RagRepository:
                 speaker_labels = EXCLUDED.speaker_labels,
                 metadata = EXCLUDED.metadata,
                 embedding_model = EXCLUDED.embedding_model,
-                embedding = EXCLUDED.embedding
+                embedding = EXCLUDED.embedding,
+                source_type = EXCLUDED.source_type,
+                source_page_start = EXCLUDED.source_page_start,
+                source_page_end = EXCLUDED.source_page_end,
+                source_slide_start = EXCLUDED.source_slide_start,
+                source_slide_end = EXCLUDED.source_slide_end,
+                source_start_seconds = EXCLUDED.source_start_seconds,
+                source_end_seconds = EXCLUDED.source_end_seconds
             """,
             [
                 (
@@ -235,6 +307,13 @@ class RagRepository:
                     self._to_json(chunk.metadata),
                     chunk.embedding_model,
                     self._to_vector_literal(chunk.embedding),
+                    chunk.source_type,
+                    chunk.source_page_start,
+                    chunk.source_page_end,
+                    chunk.source_slide_start,
+                    chunk.source_slide_end,
+                    chunk.source_start_seconds,
+                    chunk.source_end_seconds,
                 )
                 for chunk in chunks
             ],
@@ -246,7 +325,10 @@ class RagRepository:
             """
             SELECT id, chunk_index, topic, subtopic, keywords, speaker_labels,
                    segment_start_index, segment_end_index, start_seconds,
-                   end_seconds, text, summary, metadata
+                   end_seconds, text, summary, metadata,
+                   source_type, source_page_start, source_page_end,
+                   source_slide_start, source_slide_end,
+                   source_start_seconds, source_end_seconds
             FROM chunks
             WHERE transcript_id = $1
             ORDER BY chunk_index
@@ -269,6 +351,21 @@ class RagRepository:
                 text=row["text"],
                 summary=row["summary"],
                 metadata=self._to_dict(row["metadata"]),
+                source_type=self._row_value(row, "source_type"),
+                source_page_start=self._row_value(row, "source_page_start"),
+                source_page_end=self._row_value(row, "source_page_end"),
+                source_slide_start=self._row_value(row, "source_slide_start"),
+                source_slide_end=self._row_value(row, "source_slide_end"),
+                source_start_seconds=(
+                    float(self._row_value(row, "source_start_seconds"))
+                    if self._row_value(row, "source_start_seconds") is not None
+                    else None
+                ),
+                source_end_seconds=(
+                    float(self._row_value(row, "source_end_seconds"))
+                    if self._row_value(row, "source_end_seconds") is not None
+                    else None
+                ),
             )
             for row in rows
         ]
@@ -305,9 +402,16 @@ class RagRepository:
             INSERT INTO search_chunks (
               id, transcript_id, parent_chunk_id, child_index,
               segment_start_index, segment_end_index, start_seconds, end_seconds,
-              text, text_morphemes, embedding_model, embedding, metadata
+              text, text_morphemes, embedding_model, embedding, metadata,
+              source_type, source_page_start, source_page_end,
+              source_slide_start, source_slide_end,
+              source_start_seconds, source_end_seconds
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::vector, $13::jsonb)
+            VALUES (
+              $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+              $11, $12::vector, $13::jsonb,
+              $14, $15, $16, $17, $18, $19, $20
+            )
             ON CONFLICT (parent_chunk_id, child_index) DO UPDATE
             SET segment_start_index = EXCLUDED.segment_start_index,
                 segment_end_index = EXCLUDED.segment_end_index,
@@ -317,7 +421,14 @@ class RagRepository:
                 text_morphemes = EXCLUDED.text_morphemes,
                 embedding_model = EXCLUDED.embedding_model,
                 embedding = EXCLUDED.embedding,
-                metadata = EXCLUDED.metadata
+                metadata = EXCLUDED.metadata,
+                source_type = EXCLUDED.source_type,
+                source_page_start = EXCLUDED.source_page_start,
+                source_page_end = EXCLUDED.source_page_end,
+                source_slide_start = EXCLUDED.source_slide_start,
+                source_slide_end = EXCLUDED.source_slide_end,
+                source_start_seconds = EXCLUDED.source_start_seconds,
+                source_end_seconds = EXCLUDED.source_end_seconds
             """,
             [
                 (
@@ -334,6 +445,13 @@ class RagRepository:
                     chunk.embedding_model,
                     self._to_vector_literal(chunk.embedding),
                     self._to_json(chunk.metadata),
+                    chunk.source_type,
+                    chunk.source_page_start,
+                    chunk.source_page_end,
+                    chunk.source_slide_start,
+                    chunk.source_slide_end,
+                    chunk.source_start_seconds,
+                    chunk.source_end_seconds,
                 )
                 for chunk in search_chunks
             ],
@@ -413,6 +531,13 @@ class RagRepository:
                 text=hit.text,
                 score=rrf_scores[chunk_id],
                 embedding_model=hit.embedding_model,
+                source_type=hit.source_type,
+                source_page_start=hit.source_page_start,
+                source_page_end=hit.source_page_end,
+                source_slide_start=hit.source_slide_start,
+                source_slide_end=hit.source_slide_end,
+                source_start_seconds=hit.source_start_seconds,
+                source_end_seconds=hit.source_end_seconds,
             )
             for chunk_id, hit in source_by_id.items()
         ]
@@ -473,6 +598,13 @@ class RagRepository:
                 sc.end_seconds,
                 sc.text,
                 sc.embedding_model,
+                sc.source_type,
+                sc.source_page_start,
+                sc.source_page_end,
+                sc.source_slide_start,
+                sc.source_slide_end,
+                sc.source_start_seconds,
+                sc.source_end_seconds,
                 ts_rank(
                     {search_vector_sql},
                     plainto_tsquery('simple', $1)
@@ -497,6 +629,21 @@ class RagRepository:
                 text=row["text"],
                 score=float(row["score"]),
                 embedding_model=row["embedding_model"],
+                source_type=self._row_value(row, "source_type"),
+                source_page_start=self._row_value(row, "source_page_start"),
+                source_page_end=self._row_value(row, "source_page_end"),
+                source_slide_start=self._row_value(row, "source_slide_start"),
+                source_slide_end=self._row_value(row, "source_slide_end"),
+                source_start_seconds=(
+                    float(self._row_value(row, "source_start_seconds"))
+                    if self._row_value(row, "source_start_seconds") is not None
+                    else None
+                ),
+                source_end_seconds=(
+                    float(self._row_value(row, "source_end_seconds"))
+                    if self._row_value(row, "source_end_seconds") is not None
+                    else None
+                ),
             )
             for row in rows
         ]
@@ -559,6 +706,13 @@ class RagRepository:
                 sc.end_seconds,
                 sc.text,
                 sc.embedding_model,
+                sc.source_type,
+                sc.source_page_start,
+                sc.source_page_end,
+                sc.source_slide_start,
+                sc.source_slide_end,
+                sc.source_start_seconds,
+                sc.source_end_seconds,
                 (sc.embedding <=> $1::vector) AS distance
             FROM search_chunks sc
             {join_sql}
@@ -581,6 +735,21 @@ class RagRepository:
                 # 코사인 거리(0~2)를 유사도 점수(1~-1)로 변환: 거리가 작을수록 score가 높다
                 score=1.0 - float(row["distance"]),
                 embedding_model=row["embedding_model"],
+                source_type=self._row_value(row, "source_type"),
+                source_page_start=self._row_value(row, "source_page_start"),
+                source_page_end=self._row_value(row, "source_page_end"),
+                source_slide_start=self._row_value(row, "source_slide_start"),
+                source_slide_end=self._row_value(row, "source_slide_end"),
+                source_start_seconds=(
+                    float(self._row_value(row, "source_start_seconds"))
+                    if self._row_value(row, "source_start_seconds") is not None
+                    else None
+                ),
+                source_end_seconds=(
+                    float(self._row_value(row, "source_end_seconds"))
+                    if self._row_value(row, "source_end_seconds") is not None
+                    else None
+                ),
             )
             for row in rows
         ]
@@ -614,7 +783,10 @@ class RagRepository:
                 c.id, c.transcript_id, t.title AS transcript_title, c.chunk_index,
                 c.topic, c.subtopic, c.keywords, c.speaker_labels,
                 c.segment_start_index, c.segment_end_index,
-                c.start_seconds, c.end_seconds, c.text, c.summary, c.metadata
+                c.start_seconds, c.end_seconds, c.text, c.summary, c.metadata,
+                c.source_type, c.source_page_start, c.source_page_end,
+                c.source_slide_start, c.source_slide_end,
+                c.source_start_seconds, c.source_end_seconds
             FROM chunks c
             JOIN transcripts t ON c.transcript_id = t.id
             WHERE c.id = ANY($1::uuid[])
@@ -640,6 +812,21 @@ class RagRepository:
                 text=row["text"],
                 summary=row["summary"],
                 metadata=self._to_dict(row["metadata"]),
+                source_type=self._row_value(row, "source_type"),
+                source_page_start=self._row_value(row, "source_page_start"),
+                source_page_end=self._row_value(row, "source_page_end"),
+                source_slide_start=self._row_value(row, "source_slide_start"),
+                source_slide_end=self._row_value(row, "source_slide_end"),
+                source_start_seconds=(
+                    float(self._row_value(row, "source_start_seconds"))
+                    if self._row_value(row, "source_start_seconds") is not None
+                    else None
+                ),
+                source_end_seconds=(
+                    float(self._row_value(row, "source_end_seconds"))
+                    if self._row_value(row, "source_end_seconds") is not None
+                    else None
+                ),
             )
             for row in rows
         ]
@@ -893,6 +1080,12 @@ class RagRepository:
             return dict(value)
         except (TypeError, ValueError):
             return {}
+
+    def _row_value(self, row: Any, key: str) -> Any:
+        try:
+            return row[key]
+        except (KeyError, TypeError):
+            return None
 
     # pgvector가 adapter 없이도 받을 수 있는 literal 문자열로 embedding을 직렬화한다.
     def _to_vector_literal(self, embedding: list[float] | None) -> str | None:

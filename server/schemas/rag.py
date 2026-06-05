@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 TranscriptStatus = Literal["uploaded", "processing", "completed", "failed"]
 RagSearchScope = Literal["document", "web", "hybrid"]
+SourceRangeType = Literal["audio", "pdf", "ppt"]
 
 
 class TranscriptCreate(BaseModel):
@@ -43,12 +44,40 @@ class SegmentCreate(BaseModel):
     speaker_label: str | None = None
     confidence: float | None = Field(default=None, ge=0, le=1)
     raw_metadata: dict[str, Any] = Field(default_factory=dict)
+    source_type: SourceRangeType | None = None
+    source_page_start: int | None = Field(default=None, ge=1)
+    source_page_end: int | None = Field(default=None, ge=1)
+    source_slide_start: int | None = Field(default=None, ge=1)
+    source_slide_end: int | None = Field(default=None, ge=1)
+    source_start_seconds: float | None = Field(default=None, ge=0)
+    source_end_seconds: float | None = Field(default=None, ge=0)
 
     @model_validator(mode="after")
     def validate_time_range(self) -> "SegmentCreate":
         if self.end_seconds < self.start_seconds:
             raise ValueError("end_seconds must be greater than or equal to start_seconds")
+        self._validate_source_ranges()
         return self
+
+    def _validate_source_ranges(self) -> None:
+        if (
+            self.source_page_start is not None
+            and self.source_page_end is not None
+            and self.source_page_end < self.source_page_start
+        ):
+            raise ValueError("source_page_end must be greater than or equal to source_page_start")
+        if (
+            self.source_slide_start is not None
+            and self.source_slide_end is not None
+            and self.source_slide_end < self.source_slide_start
+        ):
+            raise ValueError("source_slide_end must be greater than or equal to source_slide_start")
+        if (
+            self.source_start_seconds is not None
+            and self.source_end_seconds is not None
+            and self.source_end_seconds < self.source_start_seconds
+        ):
+            raise ValueError("source_end_seconds must be greater than or equal to source_start_seconds")
 
 
 class ChunkCreate(BaseModel):
@@ -69,6 +98,13 @@ class ChunkCreate(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
     embedding_model: str | None = None
     embedding: list[float] | None = None
+    source_type: SourceRangeType | None = None
+    source_page_start: int | None = Field(default=None, ge=1)
+    source_page_end: int | None = Field(default=None, ge=1)
+    source_slide_start: int | None = Field(default=None, ge=1)
+    source_slide_end: int | None = Field(default=None, ge=1)
+    source_start_seconds: float | None = Field(default=None, ge=0)
+    source_end_seconds: float | None = Field(default=None, ge=0)
 
     @field_validator("keywords", "speaker_labels")
     @classmethod
@@ -91,7 +127,28 @@ class ChunkCreate(BaseModel):
             and self.end_seconds < self.start_seconds
         ):
             raise ValueError("end_seconds must be greater than or equal to start_seconds")
+        self._validate_source_ranges()
         return self
+
+    def _validate_source_ranges(self) -> None:
+        if (
+            self.source_page_start is not None
+            and self.source_page_end is not None
+            and self.source_page_end < self.source_page_start
+        ):
+            raise ValueError("source_page_end must be greater than or equal to source_page_start")
+        if (
+            self.source_slide_start is not None
+            and self.source_slide_end is not None
+            and self.source_slide_end < self.source_slide_start
+        ):
+            raise ValueError("source_slide_end must be greater than or equal to source_slide_start")
+        if (
+            self.source_start_seconds is not None
+            and self.source_end_seconds is not None
+            and self.source_end_seconds < self.source_start_seconds
+        ):
+            raise ValueError("source_end_seconds must be greater than or equal to source_start_seconds")
 
 
 # chunks 테이블에서 읽어온 chunk 행을 나타내는 읽기 전용 모델.
@@ -112,6 +169,13 @@ class ChunkRow(BaseModel):
     text: str
     summary: str | None = None
     metadata: dict[str, Any]
+    source_type: SourceRangeType | None = None
+    source_page_start: int | None = None
+    source_page_end: int | None = None
+    source_slide_start: int | None = None
+    source_slide_end: int | None = None
+    source_start_seconds: float | None = None
+    source_end_seconds: float | None = None
 
 
 # search_chunks 테이블 insert용 모델.
@@ -130,6 +194,35 @@ class SearchChunkCreate(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
     embedding_model: str | None = None
     embedding: list[float] | None = None
+    source_type: SourceRangeType | None = None
+    source_page_start: int | None = Field(default=None, ge=1)
+    source_page_end: int | None = Field(default=None, ge=1)
+    source_slide_start: int | None = Field(default=None, ge=1)
+    source_slide_end: int | None = Field(default=None, ge=1)
+    source_start_seconds: float | None = Field(default=None, ge=0)
+    source_end_seconds: float | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def validate_source_ranges(self) -> "SearchChunkCreate":
+        if (
+            self.source_page_start is not None
+            and self.source_page_end is not None
+            and self.source_page_end < self.source_page_start
+        ):
+            raise ValueError("source_page_end must be greater than or equal to source_page_start")
+        if (
+            self.source_slide_start is not None
+            and self.source_slide_end is not None
+            and self.source_slide_end < self.source_slide_start
+        ):
+            raise ValueError("source_slide_end must be greater than or equal to source_slide_start")
+        if (
+            self.source_start_seconds is not None
+            and self.source_end_seconds is not None
+            and self.source_end_seconds < self.source_start_seconds
+        ):
+            raise ValueError("source_end_seconds must be greater than or equal to source_start_seconds")
+        return self
 
 
 # RAG 검색 결과 단일 히트를 나타내는 읽기 전용 모델.
@@ -147,6 +240,13 @@ class SearchChunkHit(BaseModel):
     # 가중 합산 점수: 0.6 * keyword_score + 0.4 * vector_score
     score: float
     embedding_model: str | None = None
+    source_type: SourceRangeType | None = None
+    source_page_start: int | None = None
+    source_page_end: int | None = None
+    source_slide_start: int | None = None
+    source_slide_end: int | None = None
+    source_start_seconds: float | None = None
+    source_end_seconds: float | None = None
 
 
 # RAG 검색 시 상위 청크(parent chunk)의 전체 문맥을 반환하는 모델.
@@ -169,6 +269,13 @@ class ParentChunkResult(BaseModel):
     text: str
     summary: str | None
     metadata: dict[str, Any]
+    source_type: SourceRangeType | None = None
+    source_page_start: int | None = None
+    source_page_end: int | None = None
+    source_slide_start: int | None = None
+    source_slide_end: int | None = None
+    source_start_seconds: float | None = None
+    source_end_seconds: float | None = None
 
 
 # transcripts 테이블에서 id로 단건 조회한 읽기 전용 모델.
@@ -183,6 +290,18 @@ class TranscriptDetail(BaseModel):
     summary: str | None
     duration_seconds: float | None
     language: str | None
+    status: str
+    created_at: Any | None = None
+
+
+class UploadedFileDetail(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    transcript_id: UUID
+    title: str | None = None
+    file_uri: str
+    original_filename: str | None = None
+    mime_type: str | None = None
     status: str
     created_at: Any | None = None
 
