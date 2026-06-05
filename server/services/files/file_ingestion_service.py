@@ -5,6 +5,7 @@ from uuid import UUID
 from fastapi import HTTPException, UploadFile, status
 
 from repositories.rag_repository import RagRepository
+from repositories.work_item_repository import WorkItemRepository
 from services.audio.transcript_ingestion_service import TranscriptIngestionService
 from services.files.document_text_extraction_service import DocumentTextExtractionService
 from services.files.upload_storage_service import UploadStorageService
@@ -19,6 +20,7 @@ class FileIngestionResult:
     segment_count: int
     chunk_count: int
     status: str
+    folder_id: UUID | None = None
 
 
 class FileIngestionService:
@@ -54,11 +56,13 @@ class FileIngestionService:
     def __init__(
         self,
         repository: RagRepository,
+        work_item_repository: WorkItemRepository | None = None,
         transcript_ingestion_service: TranscriptIngestionService | None = None,
         document_text_extraction_service: DocumentTextExtractionService | None = None,
         upload_storage_service: UploadStorageService | None = None,
     ) -> None:
         self._repository = repository
+        self._work_item_repository = work_item_repository
         self._transcript_ingestion_service = (
             transcript_ingestion_service or TranscriptIngestionService(repository)
         )
@@ -72,7 +76,9 @@ class FileIngestionService:
         file: UploadFile,
         file_name: str | None,
         user_id: UUID | None,
+        folder_id: UUID | None = None,
     ) -> FileIngestionResult:
+        await self._validate_folder(folder_id, user_id)
         resolved_file_name = self._resolve_file_name(file, file_name)
         suffix = Path(resolved_file_name).suffix.lower()
 
@@ -87,11 +93,13 @@ class FileIngestionService:
                 file_uri=stored_upload.uri,
                 file_name=resolved_file_name,
                 user_id=user_id,
+                folder_id=folder_id,
             )
             return FileIngestionResult(
                 transcript_id=result.transcript_id,
                 source_type="audio",
                 file_uri=stored_upload.uri,
+                folder_id=folder_id,
                 transcript=result.transcript,
                 segment_count=result.segment_count,
                 chunk_count=result.chunk_count,
@@ -113,6 +121,7 @@ class FileIngestionService:
                 title=Path(resolved_file_name).stem,
                 duration_seconds=float(len(extraction.segments)),
                 user_id=user_id,
+                folder_id=folder_id,
                 source_uri=stored_upload.uri,
                 original_filename=resolved_file_name,
                 mime_type=file.content_type,
@@ -122,6 +131,7 @@ class FileIngestionService:
                 transcript_id=result.transcript_id,
                 source_type="document",
                 file_uri=stored_upload.uri,
+                folder_id=folder_id,
                 transcript=result.transcript,
                 segment_count=result.segment_count,
                 chunk_count=result.chunk_count,
@@ -133,6 +143,38 @@ class FileIngestionService:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Unsupported file type. Allowed extensions: {allowed}",
         )
+
+    async def _validate_folder(
+        self,
+        folder_id: UUID | None,
+        user_id: UUID | None,
+    ) -> None:
+        """
+        기능 요약: 업로드 대상 폴더가 인증 사용자 소유인지 확인한다.
+
+        기능 흐름:
+            1. folder_id가 없으면 루트 업로드로 보고 검증을 건너뛴다.
+            2. folder_id가 있으면 사용자 id와 폴더 repository가 모두 있는지 확인한다.
+            3. get_folder_by_id(folder_id, user_id)로 소유 폴더 존재 여부를 검증한다.
+
+        파라미터:
+            folder_id: 업로드 대상 폴더 UUID. None이면 루트 파일로 저장한다.
+            user_id: JWT에서 얻은 인증 사용자 UUID.
+        """
+        if folder_id is None:
+            return
+        if user_id is None or self._work_item_repository is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Folder not found.",
+            )
+
+        folder = await self._work_item_repository.get_folder_by_id(folder_id, user_id)
+        if folder is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Folder not found.",
+            )
 
     def _resolve_file_name(
         self,

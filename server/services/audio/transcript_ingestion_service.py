@@ -79,12 +79,14 @@ class TranscriptIngestionService:
         file_uri: str,
         file_name: str,
         user_id: UUID | None = None,
+        folder_id: UUID | None = None,
     ) -> TranscriptIngestionResult:
         title = Path(file_name).stem
 
         transcript_id = await self._repository.create_transcript(
             TranscriptCreate(
                 user_id=user_id,
+                folder_id=folder_id,
                 title=title,
                 source_audio_uri=file_uri,
                 original_filename=file_name,
@@ -205,6 +207,7 @@ class TranscriptIngestionService:
         title: str | None = None,
         duration_seconds: float | None = None,
         user_id: UUID | None = None,
+        folder_id: UUID | None = None,
         source_uri: str = "realtime://recording",
         original_filename: str | None = None,
         mime_type: str | None = None,
@@ -216,6 +219,7 @@ class TranscriptIngestionService:
         transcript_id = await self._repository.create_transcript(
             TranscriptCreate(
                 user_id=user_id,
+                folder_id=folder_id,
                 title=title,
                 source_audio_uri=source_uri,
                 original_filename=original_filename,

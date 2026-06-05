@@ -182,7 +182,9 @@ async def test_repository_creates_transcript_and_updates_result() -> None:
 
     assert isinstance(transcript_id, UUID)
     assert "INSERT INTO transcripts" in connection.executed[0][0]
+    assert "folder_id" in connection.executed[0][0]
     assert connection.executed[0][1][3] == "uploads/meeting.mp3"
+    assert connection.executed[0][1][10] is None
     assert "UPDATE transcripts" in connection.executed[1][0]
     assert connection.executed[1][1][1] == "회의 내용"
     assert connection.executed[1][1][5] == "completed"

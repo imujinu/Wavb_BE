@@ -33,9 +33,9 @@ class RagRepository:
             INSERT INTO transcripts (
               id, user_id, title, source_audio_uri,
               original_filename, mime_type, duration_seconds, language,
-              stt_model, status
+              stt_model, status, folder_id
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
             RETURNING id
             """,
             transcript_id,
@@ -48,6 +48,7 @@ class RagRepository:
             transcript.language,
             transcript.stt_model,
             transcript.status,
+            transcript.folder_id,
         )
         return row["id"] if row else transcript_id
 

@@ -126,16 +126,19 @@ async def test_ingest_upload_persists_transcript_result_and_segments() -> None:
         transcription_service,
         context_chunk_planning_service=planning_service,
     )
+    folder_id = uuid4()
 
     result = await service.ingest_upload(
         file=FakeUploadFile(),
         file_uri="upload://meeting.mp3",
         file_name="meeting.mp3",
         user_id=uuid4(),
+        folder_id=folder_id,
     )
 
     assert isinstance(result.transcript_id, UUID)
     assert repository.created[0].status == "processing"
+    assert repository.created[0].folder_id == folder_id
     assert repository.created[0].source_audio_uri == "upload://meeting.mp3"
     assert repository.updates[0][1].status == "completed"
     assert repository.updates[0][1].full_text == "첫 번째 발화 두 번째 발화"

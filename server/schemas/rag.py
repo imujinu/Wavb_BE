@@ -14,6 +14,7 @@ class TranscriptCreate(BaseModel):
 
     source_audio_uri: str = Field(min_length=1)
     user_id: UUID | None = None
+    folder_id: UUID | None = None
     title: str | None = None
     original_filename: str | None = None
     mime_type: str | None = None

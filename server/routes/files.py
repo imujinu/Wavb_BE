@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from db.connection import DatabaseConnection, get_connection
 from dependencies.auth import get_current_user
 from repositories.rag_repository import RagRepository
+from repositories.work_item_repository import WorkItemRepository
 from schemas.auth import CurrentUser
 from schemas.rag import UploadedFileDetail
 from services.files.file_ingestion_service import FileIngestionService
@@ -19,6 +20,7 @@ class FileUploadResponse(BaseModel):
     transcript_id: UUID
     source_type: str
     file_uri: str
+    folder_id: UUID | None = None
     transcript: str
     segment_count: int
     chunk_count: int
@@ -41,16 +43,28 @@ async def get_rag_repository(
     yield RagRepository(connection)
 
 
+async def get_work_item_repository(
+    connection: DatabaseConnection = Depends(get_connection),
+) -> AsyncIterator[WorkItemRepository]:
+    yield WorkItemRepository(connection)
+
+
 def get_file_ingestion_service(
     repository: RagRepository = Depends(get_rag_repository),
+    work_item_repository: WorkItemRepository = Depends(get_work_item_repository),
 ) -> FileIngestionService:
-    return FileIngestionService(repository)
+    return FileIngestionService(repository, work_item_repository=work_item_repository)
 
 
-@router.post("/upload", response_model=FileUploadResponse)
+@router.post(
+    "/upload",
+    response_model=FileUploadResponse,
+    response_model_exclude_none=True,
+)
 async def upload_file(
     file: UploadFile = File(...),
     file_name: str | None = Form(default=None),
+    folder_id: UUID | None = Form(default=None),
     current_user: CurrentUser = Depends(get_current_user),
     ingestion_service: FileIngestionService = Depends(get_file_ingestion_service),
 ) -> FileUploadResponse:
@@ -65,16 +79,19 @@ async def upload_file(
     파라미터:
         file: 업로드 파일 (예: lecture.pdf, meeting.mp3)
         file_name: 표시/저장 파일명. 없으면 UploadFile.filename
+        folder_id: 선택 대상 폴더 UUID. 없으면 루트 파일로 저장
     """
     result = await ingestion_service.ingest_upload(
         file=file,
         file_name=file_name,
         user_id=current_user.user_id,
+        folder_id=folder_id,
     )
     return FileUploadResponse(
         transcript_id=result.transcript_id,
         source_type=result.source_type,
         file_uri=result.file_uri,
+        folder_id=result.folder_id,
         transcript=result.transcript,
         segment_count=result.segment_count,
         chunk_count=result.chunk_count,
