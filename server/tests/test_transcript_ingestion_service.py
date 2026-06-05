@@ -131,7 +131,6 @@ async def test_ingest_upload_persists_transcript_result_and_segments() -> None:
         file=FakeUploadFile(),
         file_uri="upload://meeting.mp3",
         file_name="meeting.mp3",
-        languages=["ko"],
         user_id=uuid4(),
     )
 
@@ -144,6 +143,9 @@ async def test_ingest_upload_persists_transcript_result_and_segments() -> None:
     assert repository.inserted_segments[0][0] == repository.transcript_id
     assert [segment.segment_index for segment in repository.inserted_segments[0][1]] == [0, 1]
     assert repository.inserted_segments[0][1][0].raw_metadata["stt_model"] == "whisper-1"
+    assert repository.inserted_segments[0][1][0].source_type == "audio"
+    assert repository.inserted_segments[0][1][0].source_start_seconds == 0.0
+    assert repository.inserted_segments[0][1][0].source_end_seconds == 4.0
     assert repository.inserted_chunks[0][0] == repository.transcript_id
     assert repository.inserted_chunks[0][1][0].chunk_strategy == "lecture_context_plan_v1"
     assert repository.inserted_chunks[0][1][0].metadata["planning_method"] == "llm"
@@ -176,7 +178,6 @@ async def test_ingest_upload_enriches_chunks_before_insert() -> None:
         FakeUploadFile(),
         file_uri="upload://meeting.mp3",
         file_name="meeting.mp3",
-        languages=["ko"],
     )
 
     inserted_chunk = repository.inserted_chunks[0][1][0]
@@ -213,7 +214,6 @@ async def test_ingest_upload_uses_original_chunks_when_metadata_enrichment_fails
         FakeUploadFile(),
         file_uri="upload://lecture.mp3",
         file_name="lecture.mp3",
-        languages=["ko"],
     )
 
     inserted_chunk = repository.inserted_chunks[0][1][0]
@@ -255,7 +255,6 @@ async def test_ingest_upload_uses_llm_plan_to_insert_multiple_context_chunks() -
         FakeUploadFile(),
         file_uri="upload://meeting.mp3",
         file_name="meeting.mp3",
-        languages=["ko"],
     )
 
     inserted_chunks = repository.inserted_chunks[0][1]
@@ -297,7 +296,6 @@ async def test_ingest_upload_uses_fallback_chunks_when_planner_fails() -> None:
         FakeUploadFile(),
         file_uri="upload://meeting.mp3",
         file_name="meeting.mp3",
-        languages=["ko"],
     )
 
     inserted_chunks = repository.inserted_chunks[0][1]
@@ -321,7 +319,6 @@ async def test_ingest_upload_marks_transcript_failed_when_stt_fails() -> None:
             FakeUploadFile(),
             file_uri="upload://lecture.mp3",
             file_name="lecture.mp3",
-            languages=["ko"],
         )
 
     assert repository.created[0].status == "processing"
@@ -419,7 +416,6 @@ async def test_ingest_creates_transcript_and_saves_chunks_and_search_chunks() ->
         FakeUploadFile(),
         file_uri="upload://meeting.mp3",
         file_name="meeting.mp3",
-        languages=["ko"],
     )
 
     # transcript 완료 상태 확인
@@ -471,7 +467,6 @@ async def test_ingest_continues_on_search_chunk_failure() -> None:
         FakeUploadFile(),
         file_uri="upload://meeting.mp3",
         file_name="meeting.mp3",
-        languages=["ko"],
     )
 
     # transcript는 completed 상태 유지

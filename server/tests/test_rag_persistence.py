@@ -95,6 +95,18 @@ def test_rag_migration_defines_step1_tables_and_indexes() -> None:
     assert "domain_type" not in migration
 
 
+def test_source_range_migration_adds_nullable_columns() -> None:
+    migration = Path("db/migrations/009_add_source_range_columns.sql").read_text()
+
+    assert "ALTER TABLE segments" in migration
+    assert "ALTER TABLE chunks" in migration
+    assert "ALTER TABLE search_chunks" in migration
+    assert "source_type TEXT" in migration
+    assert "source_page_start INT" in migration
+    assert "source_slide_start INT" in migration
+    assert "source_start_seconds NUMERIC" in migration
+
+
 def test_pydantic_models_validate_domain_and_ranges() -> None:
     assert TranscriptCreate(source_audio_uri="uploads/a.mp3")
 
@@ -190,10 +202,13 @@ async def test_repository_inserts_segments_and_chunks() -> None:
                 speaker_label="speaker_1",
                 start_seconds=0.0,
                 end_seconds=4.2,
-                text="첫 번째 발화",
-                confidence=0.91,
-                raw_metadata={"provider": "openai"},
-            )
+            text="첫 번째 발화",
+            confidence=0.91,
+            raw_metadata={"provider": "openai"},
+            source_type="audio",
+            source_start_seconds=0.0,
+            source_end_seconds=4.2,
+        )
         ],
     )
     await repository.insert_chunks(
@@ -214,6 +229,9 @@ async def test_repository_inserts_segments_and_chunks() -> None:
                 metadata={"decision_flag": True},
                 embedding_model="text-embedding-3-small",
                 embedding=[0.1, 0.2, 0.3],
+                source_type="pdf",
+                source_page_start=1,
+                source_page_end=2,
             )
         ],
     )
@@ -221,10 +239,16 @@ async def test_repository_inserts_segments_and_chunks() -> None:
     assert "INSERT INTO segments" in connection.executemany_calls[0][0]
     assert connection.executemany_calls[0][1][0][1] == transcript_id
     assert connection.executemany_calls[0][1][0][8] == '{"provider": "openai"}'
+    assert connection.executemany_calls[0][1][0][9] == "audio"
+    assert connection.executemany_calls[0][1][0][14] == 0.0
+    assert connection.executemany_calls[0][1][0][15] == 4.2
     assert "INSERT INTO chunks" in connection.executemany_calls[1][0]
     assert connection.executemany_calls[1][1][0][2] == 0
     assert connection.executemany_calls[1][1][0][12] == ["일정"]
     assert connection.executemany_calls[1][1][0][16] == "[0.1,0.2,0.3]"
+    assert connection.executemany_calls[1][1][0][17] == "pdf"
+    assert connection.executemany_calls[1][1][0][18] == 1
+    assert connection.executemany_calls[1][1][0][19] == 2
 
 
 @pytest.mark.asyncio
@@ -247,6 +271,9 @@ async def test_insert_search_chunks_creates_rows() -> None:
             metadata={"segment_count": 3},
             embedding_model="text-embedding-3-small",
             embedding=[0.1, 0.2, 0.3],
+            source_type="ppt",
+            source_slide_start=1,
+            source_slide_end=1,
         ),
         SearchChunkCreate(
             parent_chunk_id=parent_chunk_id,
@@ -259,6 +286,9 @@ async def test_insert_search_chunks_creates_rows() -> None:
             metadata={"segment_count": 3},
             embedding_model="text-embedding-3-small",
             embedding=[0.4, 0.5, 0.6],
+            source_type="ppt",
+            source_slide_start=2,
+            source_slide_end=3,
         ),
     ]
 
@@ -284,10 +314,15 @@ async def test_insert_search_chunks_creates_rows() -> None:
     assert first_row[9] is None
     # index 10: embedding_model
     assert first_row[10] == "text-embedding-3-small"
+    assert first_row[13] == "ppt"
+    assert first_row[16] == 1
+    assert first_row[17] == 1
 
     # 두 번째 행도 정상 저장되는지 확인
     assert params[1][3] == 1
     assert params[1][8] == "두 번째 검색 청크"
+    assert params[1][16] == 2
+    assert params[1][17] == 3
 
 
 @pytest.mark.asyncio
@@ -796,6 +831,37 @@ async def test_get_transcript_by_id_returns_none_when_missing() -> None:
     detail = await repository.get_transcript_by_id(uuid4())
 
     assert detail is None
+
+
+@pytest.mark.asyncio
+async def test_list_transcripts_by_user_filters_owner_and_orders_created_at() -> None:
+    connection = FakeConnection()
+    repository = RagRepository(connection)
+    transcript_id = uuid4()
+    user_id = uuid4()
+    connection.fetch_results = [[{
+        "id": transcript_id,
+        "title": "lecture",
+        "source_audio_uri": "/uploads/user/lecture.pdf",
+        "original_filename": "lecture.pdf",
+        "mime_type": "application/pdf",
+        "status": "completed",
+        "created_at": None,
+    }]]
+
+    files = await repository.list_transcripts_by_user(user_id)
+
+    assert len(files) == 1
+    assert files[0].transcript_id == transcript_id
+    assert files[0].title == "lecture"
+    assert files[0].file_uri == "/uploads/user/lecture.pdf"
+    assert files[0].original_filename == "lecture.pdf"
+    assert files[0].mime_type == "application/pdf"
+    assert files[0].status == "completed"
+    sql, args = connection.fetch_calls[0]
+    assert "WHERE user_id = $1" in sql
+    assert "ORDER BY created_at DESC" in sql
+    assert args == (user_id,)
 
 
 @pytest.mark.asyncio

@@ -25,8 +25,6 @@ from services.audio.transcription_service import TranscriptionService
 router = APIRouter(prefix="/audio", tags=["audio"])
 
 ALLOWED_EXTENSIONS = {".m4a", ".mp3", ".wav", ".webm"}
-# 허용 언어 조합: 한국어 단독, 영어 단독, 한국어+영어 혼합만 허용
-ALLOWED_LANGUAGE_SETS = [{"ko"}, {"en"}, {"ko", "en"}]
 
 
 class AudioSummaryResponse(BaseModel):
@@ -57,14 +55,6 @@ async def get_rag_repository(
     connection: DatabaseConnection = Depends(get_connection),
 ) -> AsyncIterator[RagRepository]:
     yield RagRepository(connection)
-
-
-def validate_languages(languages: list[str]) -> None:
-    if set(languages) not in ALLOWED_LANGUAGE_SETS:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="languages는 ['ko'], ['en'], ['ko', 'en'] 조합만 허용됩니다.",
-        )
 
 
 def validate_audio_file(file: UploadFile) -> None:
@@ -102,13 +92,11 @@ async def create_audio_transcript(
     file: UploadFile = File(...),
     file_uri: str = Form(...),
     file_name: str = Form(...),
-    languages: list[str] = Form(...),
     # user_id는 클라이언트 입력 대신 JWT 토큰에서 추출한 인증 사용자로 대체
     current_user: CurrentUser = Depends(get_current_user),
     repository: RagRepository = Depends(get_rag_repository),
 ) -> AudioTranscriptResponse:
     validate_audio_file(file)
-    validate_languages(languages)
 
     ingestion_service = TranscriptIngestionService(repository)
     # 1. 인증된 사용자의 user_id를 토큰에서 주입하여 인제스션 실행
@@ -116,7 +104,6 @@ async def create_audio_transcript(
         file=file,
         file_uri=file_uri,
         file_name=file_name,
-        languages=languages,
         user_id=current_user.user_id,
     )
     return AudioTranscriptResponse(

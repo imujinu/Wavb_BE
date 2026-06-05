@@ -81,6 +81,38 @@ def test_context_planned_chunk_builder_preserves_fallback_planning_error() -> No
     )
 
 
+def test_context_planned_chunk_builder_propagates_source_range() -> None:
+    builder = ContextPlannedChunkBuilder()
+
+    chunks = builder.build(
+        [
+            SegmentCreate(
+                segment_index=0,
+                start_seconds=0.0,
+                end_seconds=1.0,
+                text="1페이지 내용",
+                source_type="pdf",
+                source_page_start=1,
+                source_page_end=1,
+            ),
+            SegmentCreate(
+                segment_index=1,
+                start_seconds=1.0,
+                end_seconds=2.0,
+                text="2페이지 내용",
+                source_type="pdf",
+                source_page_start=2,
+                source_page_end=2,
+            ),
+        ],
+        [ContextChunkPlanGroup(0, 1, "문서", "페이지 범위 병합", None)],
+    )
+
+    assert chunks[0].source_type == "pdf"
+    assert chunks[0].source_page_start == 1
+    assert chunks[0].source_page_end == 2
+
+
 def test_deterministic_fallback_chunk_builder_uses_lecture_time_ranges() -> None:
     builder = DeterministicFallbackChunkBuilder(lecture_max_seconds=180.0)
 

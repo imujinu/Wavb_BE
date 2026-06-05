@@ -53,7 +53,7 @@ class TranscriptIngestionService:
         embedding_service: EmbeddingService | None = None,  # 벡터 임베딩 생성 담당
     ) -> None:
         self._repository = repository
-        self._transcription_service = transcription_service or TranscriptionService()
+        self._transcription_service = transcription_service
         self._chunk_metadata_service = chunk_metadata_service
         self._context_chunk_planning_service = context_chunk_planning_service
         self._planned_chunk_builder = planned_chunk_builder or ContextPlannedChunkBuilder()
@@ -78,10 +78,8 @@ class TranscriptIngestionService:
         file: UploadFile,
         file_uri: str,
         file_name: str,
-        languages: list[str],
         user_id: UUID | None = None,
     ) -> TranscriptIngestionResult:
-        language = languages[0] if languages else "ko"
         title = Path(file_name).stem
 
         transcript_id = await self._repository.create_transcript(
@@ -99,8 +97,9 @@ class TranscriptIngestionService:
             _t0_total = time.perf_counter()
 
             _t0 = time.perf_counter()
-            transcription = await self._transcription_service.transcribe_with_segments(
-                file, language=language
+            transcription_service = self._transcription_service or TranscriptionService()
+            transcription = await transcription_service.transcribe_with_segments(
+                file
             )
             logger.info(
                 "[timing] STT: %.2fs  (duration=%.1fs, model=%s)",
@@ -182,6 +181,9 @@ class TranscriptIngestionService:
                 start_seconds=s["start_seconds"],
                 end_seconds=s["end_seconds"],
                 text=s["text"],
+                source_type="audio",
+                source_start_seconds=s["start_seconds"],
+                source_end_seconds=s["end_seconds"],
                 raw_metadata={"source": "realtime"},
             )
             for s in segments
@@ -191,6 +193,8 @@ class TranscriptIngestionService:
             title=title,
             duration_seconds=duration_seconds,
             user_id=user_id,
+            source_uri="realtime://recording",
+            source_type="audio",
         )
 
     # 실시간 녹음 세션에서 클라이언트가 전달한 segments로 transcript를 저장한다.
@@ -201,15 +205,21 @@ class TranscriptIngestionService:
         title: str | None = None,
         duration_seconds: float | None = None,
         user_id: UUID | None = None,
+        source_uri: str = "realtime://recording",
+        original_filename: str | None = None,
+        mime_type: str | None = None,
+        source_type: str | None = None,
     ) -> TranscriptIngestionResult:
         _t0_total = time.perf_counter()
         settings = get_settings()
-        stt_model = settings.openai_stt_model
+        stt_model = settings.openai_stt_model if source_type == "audio" else None
         transcript_id = await self._repository.create_transcript(
             TranscriptCreate(
                 user_id=user_id,
                 title=title,
-                source_audio_uri="realtime://recording",
+                source_audio_uri=source_uri,
+                original_filename=original_filename,
+                mime_type=mime_type,
                 duration_seconds=duration_seconds,
                 stt_model=stt_model,
                 status="processing",
@@ -371,6 +381,13 @@ class TranscriptIngestionService:
                     # EmbeddingService 기본 모델값과 동기화
                     embedding_model="text-embedding-3-small",
                     embedding=embeddings[i],
+                    source_type=search_chunks[i].source_type,
+                    source_page_start=search_chunks[i].source_page_start,
+                    source_page_end=search_chunks[i].source_page_end,
+                    source_slide_start=search_chunks[i].source_slide_start,
+                    source_slide_end=search_chunks[i].source_slide_end,
+                    source_start_seconds=search_chunks[i].source_start_seconds,
+                    source_end_seconds=search_chunks[i].source_end_seconds,
                 )
                 for i in range(len(search_chunks))
             ]
@@ -418,6 +435,9 @@ class TranscriptIngestionService:
                         "stt_model": stt_model,
                         "source_segment_index": index,
                     },
+                    source_type="audio",
+                    source_start_seconds=start_seconds,
+                    source_end_seconds=end_seconds,
                 )
             )
 
