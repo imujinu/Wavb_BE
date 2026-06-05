@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -46,8 +47,22 @@ class FakeTranscriptIngestionService:
         )
 
 
+class FakeRepository:
+    def __init__(self) -> None:
+        self.created = []
+        self.transcript_id = uuid4()
+
+    async def create_transcript(self, transcript):
+        self.created.append(transcript)
+        return self.transcript_id
+
+
 class FakeDocumentTextExtractionService:
+    def __init__(self) -> None:
+        self.calls = []
+
     async def extract_upload(self, file, file_name):
+        self.calls.append((file, file_name))
         return DocumentTextExtractionResult(
             text="문서 텍스트",
             source_type="pdf",
@@ -78,11 +93,24 @@ class FakeUploadStorageService:
         )
 
 
+class FakeWorkItemRepository:
+    def __init__(self, folder_exists: bool = True) -> None:
+        self.folder_exists = folder_exists
+        self.calls = []
+
+    async def get_folder_by_id(self, folder_id, user_id):
+        self.calls.append((folder_id, user_id))
+        if not self.folder_exists:
+            return None
+        return SimpleNamespace(id=folder_id)
+
+
 @pytest.mark.asyncio
 async def test_file_ingestion_routes_audio_without_languages() -> None:
+    repository = FakeRepository()
     transcript_service = FakeTranscriptIngestionService()
     service = FileIngestionService(
-        repository=object(),
+        repository=repository,
         transcript_ingestion_service=transcript_service,
         document_text_extraction_service=FakeDocumentTextExtractionService(),
         upload_storage_service=FakeUploadStorageService(),
@@ -96,16 +124,22 @@ async def test_file_ingestion_routes_audio_without_languages() -> None:
 
     assert result.source_type == "audio"
     assert result.file_uri == "/uploads/test/meeting.mp3"
-    assert transcript_service.upload_calls[0]["file_name"] == "meeting.mp3"
-    assert transcript_service.upload_calls[0]["file_uri"] == "/uploads/test/meeting.mp3"
-    assert "languages" not in transcript_service.upload_calls[0]
+    assert result.status == "uploaded"
+    assert result.segment_count == 0
+    assert result.chunk_count == 0
+    assert transcript_service.upload_calls == []
+    assert repository.created[0].source_audio_uri == "/uploads/test/meeting.mp3"
+    assert repository.created[0].source_type == "audio"
+    assert repository.created[0].content_status == "pending"
+    assert repository.created[0].index_status == "pending"
 
 
 @pytest.mark.asyncio
 async def test_file_ingestion_infers_mp3_extension_from_content_type() -> None:
+    repository = FakeRepository()
     transcript_service = FakeTranscriptIngestionService()
     service = FileIngestionService(
-        repository=object(),
+        repository=repository,
         transcript_ingestion_service=transcript_service,
         document_text_extraction_service=FakeDocumentTextExtractionService(),
         upload_storage_service=FakeUploadStorageService(),
@@ -119,17 +153,19 @@ async def test_file_ingestion_infers_mp3_extension_from_content_type() -> None:
 
     assert result.source_type == "audio"
     assert result.file_uri == "/uploads/test/blob.mp3"
-    assert transcript_service.upload_calls[0]["file_name"] == "blob.mp3"
-    assert transcript_service.upload_calls[0]["file_uri"] == "/uploads/test/blob.mp3"
+    assert transcript_service.upload_calls == []
+    assert repository.created[0].original_filename == "blob.mp3"
 
 
 @pytest.mark.asyncio
 async def test_file_ingestion_routes_document_to_segment_ingestion() -> None:
+    repository = FakeRepository()
     transcript_service = FakeTranscriptIngestionService()
+    extraction_service = FakeDocumentTextExtractionService()
     service = FileIngestionService(
-        repository=object(),
+        repository=repository,
         transcript_ingestion_service=transcript_service,
-        document_text_extraction_service=FakeDocumentTextExtractionService(),
+        document_text_extraction_service=extraction_service,
         upload_storage_service=FakeUploadStorageService(),
     )
 
@@ -139,19 +175,75 @@ async def test_file_ingestion_routes_document_to_segment_ingestion() -> None:
         user_id=uuid4(),
     )
 
-    assert result.source_type == "document"
+    assert result.source_type == "pdf"
     assert result.file_uri == "/uploads/test/lecture.pdf"
-    call = transcript_service.segment_calls[0]
-    assert call["source_uri"] == "/uploads/test/lecture.pdf"
-    assert call["original_filename"] == "lecture.pdf"
-    assert call["source_type"] == "pdf"
-    assert call["segments"][0].source_page_start == 1
+    assert result.status == "uploaded"
+    assert transcript_service.segment_calls == []
+    assert extraction_service.calls == []
+    assert repository.created[0].source_audio_uri == "/uploads/test/lecture.pdf"
+    assert repository.created[0].source_type == "pdf"
+
+
+@pytest.mark.asyncio
+async def test_file_ingestion_validates_folder_before_document_upload() -> None:
+    user_id = uuid4()
+    folder_id = uuid4()
+    transcript_service = FakeTranscriptIngestionService()
+    storage_service = FakeUploadStorageService()
+    work_item_repository = FakeWorkItemRepository(folder_exists=True)
+    service = FileIngestionService(
+        repository=FakeRepository(),
+        work_item_repository=work_item_repository,
+        transcript_ingestion_service=transcript_service,
+        document_text_extraction_service=FakeDocumentTextExtractionService(),
+        upload_storage_service=storage_service,
+    )
+
+    result = await service.ingest_upload(
+        file=FakeUploadFile("lecture.pdf", "application/pdf"),
+        file_name="lecture.pdf",
+        user_id=user_id,
+        folder_id=folder_id,
+    )
+
+    assert result.folder_id == folder_id
+    assert work_item_repository.calls == [(folder_id, user_id)]
+    assert storage_service.calls[0][1] == "lecture.pdf"
+    assert transcript_service.segment_calls == []
+
+
+@pytest.mark.asyncio
+async def test_file_ingestion_rejects_invalid_folder_before_saving_file() -> None:
+    user_id = uuid4()
+    folder_id = uuid4()
+    transcript_service = FakeTranscriptIngestionService()
+    storage_service = FakeUploadStorageService()
+    work_item_repository = FakeWorkItemRepository(folder_exists=False)
+    service = FileIngestionService(
+        repository=FakeRepository(),
+        work_item_repository=work_item_repository,
+        transcript_ingestion_service=transcript_service,
+        document_text_extraction_service=FakeDocumentTextExtractionService(),
+        upload_storage_service=storage_service,
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await service.ingest_upload(
+            file=FakeUploadFile("lecture.pdf", "application/pdf"),
+            file_name="lecture.pdf",
+            user_id=user_id,
+            folder_id=folder_id,
+        )
+
+    assert exc.value.status_code == 404
+    assert storage_service.calls == []
+    assert transcript_service.segment_calls == []
 
 
 @pytest.mark.asyncio
 async def test_file_ingestion_rejects_unsupported_extension() -> None:
     service = FileIngestionService(
-        repository=object(),
+        repository=FakeRepository(),
         transcript_ingestion_service=FakeTranscriptIngestionService(),
         document_text_extraction_service=FakeDocumentTextExtractionService(),
         upload_storage_service=FakeUploadStorageService(),

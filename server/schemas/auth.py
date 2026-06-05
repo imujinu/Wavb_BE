@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, EmailStr, Field
 
 
 # 회원가입 요청 시 클라이언트가 전송하는 입력값을 검증한다.
@@ -42,8 +42,11 @@ class CurrentUser(BaseModel):
 
 class OAuthLoginRequest(BaseModel):
     """Google / Kakao OAuth 인가 코드 로그인 요청"""
-    model_config = ConfigDict(frozen=True)
-    code: str
+    model_config = ConfigDict(frozen=True, populate_by_name=True)
+    code: str = Field(
+        min_length=1,
+        validation_alias=AliasChoices("code", "serverAuthCode", "server_auth_code"),
+    )
 
 
 class OAuthNaverLoginRequest(BaseModel):

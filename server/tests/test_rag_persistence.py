@@ -1,4 +1,5 @@
 from pathlib import Path
+from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
 import pytest
@@ -107,6 +108,24 @@ def test_source_range_migration_adds_nullable_columns() -> None:
     assert "source_start_seconds NUMERIC" in migration
 
 
+def test_lazy_processing_migration_adds_status_and_temporary_segments() -> None:
+    migration = Path("db/migrations/011_add_lazy_processing_status.sql").read_text()
+
+    assert "ADD COLUMN IF NOT EXISTS source_type TEXT" in migration
+    assert "ADD COLUMN IF NOT EXISTS content_status TEXT" in migration
+    assert "ADD COLUMN IF NOT EXISTS index_status TEXT" in migration
+    assert "CREATE TABLE IF NOT EXISTS temporary_segments" in migration
+    assert "UNIQUE (transcript_id, segment_index)" in migration
+
+
+def test_processing_cancellation_migration_adds_cancel_columns() -> None:
+    migration = Path("db/migrations/012_add_processing_cancellation.sql").read_text()
+
+    assert "ADD COLUMN IF NOT EXISTS cancel_requested_at" in migration
+    assert "ADD COLUMN IF NOT EXISTS cancelled_at" in migration
+    assert "idx_transcripts_cancel_requested" in migration
+
+
 def test_pydantic_models_validate_domain_and_ranges() -> None:
     assert TranscriptCreate(source_audio_uri="uploads/a.mp3")
 
@@ -182,10 +201,46 @@ async def test_repository_creates_transcript_and_updates_result() -> None:
 
     assert isinstance(transcript_id, UUID)
     assert "INSERT INTO transcripts" in connection.executed[0][0]
+    assert "folder_id" in connection.executed[0][0]
+    assert "content_status" in connection.executed[0][0]
     assert connection.executed[0][1][3] == "uploads/meeting.mp3"
+    assert connection.executed[0][1][10] is None
+    assert connection.executed[0][1][11] is None
+    assert connection.executed[0][1][12] == "pending"
+    assert connection.executed[0][1][13] == "pending"
+    assert connection.executed[0][1][14] is None
     assert "UPDATE transcripts" in connection.executed[1][0]
     assert connection.executed[1][1][1] == "회의 내용"
     assert connection.executed[1][1][5] == "completed"
+
+
+@pytest.mark.asyncio
+async def test_repository_requests_processing_cancel_and_checks_flag() -> None:
+    connection = FakeConnection()
+    repository = RagRepository(connection)
+    transcript_id = uuid4()
+    user_id = uuid4()
+
+    updated = await repository.request_processing_cancel(transcript_id, user_id)
+    is_cancelled = await repository.is_processing_cancel_requested(
+        transcript_id,
+        user_id,
+    )
+    is_cancelled_after = await repository.is_processing_cancel_requested_after(
+        transcript_id,
+        user_id,
+        datetime.now(timezone.utc),
+    )
+
+    assert updated is True
+    assert is_cancelled is True
+    assert is_cancelled_after is True
+    assert "cancel_requested_at" in connection.executed[0][0]
+    assert "cancelled_at" in connection.executed[0][0]
+    assert "cancel_requested_at IS NOT NULL" in connection.executed[1][0]
+    assert "cancel_requested_at >= $3" in connection.executed[2][0]
+    assert connection.executed[0][1] == (transcript_id, user_id)
+    assert connection.executed[1][1] == (transcript_id, user_id)
 
 
 @pytest.mark.asyncio

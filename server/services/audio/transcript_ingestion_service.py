@@ -1,5 +1,6 @@
 import logging
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
 from uuid import UUID
@@ -24,6 +25,7 @@ from services.rag.embedding_service import EmbeddingService
 from services.rag.morpheme_service import MorphemeService
 from services.chunks.search_chunk_builder import SearchChunkBuilder
 from services.audio.transcription_service import TranscriptionService, TranscriptionSegment
+from services.files.processing_cancellation import raise_if_cancel_requested
 from settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -79,12 +81,14 @@ class TranscriptIngestionService:
         file_uri: str,
         file_name: str,
         user_id: UUID | None = None,
+        folder_id: UUID | None = None,
     ) -> TranscriptIngestionResult:
         title = Path(file_name).stem
 
         transcript_id = await self._repository.create_transcript(
             TranscriptCreate(
                 user_id=user_id,
+                folder_id=folder_id,
                 title=title,
                 source_audio_uri=file_uri,
                 original_filename=file_name,
@@ -205,6 +209,7 @@ class TranscriptIngestionService:
         title: str | None = None,
         duration_seconds: float | None = None,
         user_id: UUID | None = None,
+        folder_id: UUID | None = None,
         source_uri: str = "realtime://recording",
         original_filename: str | None = None,
         mime_type: str | None = None,
@@ -216,6 +221,7 @@ class TranscriptIngestionService:
         transcript_id = await self._repository.create_transcript(
             TranscriptCreate(
                 user_id=user_id,
+                folder_id=folder_id,
                 title=title,
                 source_audio_uri=source_uri,
                 original_filename=original_filename,
@@ -258,42 +264,127 @@ class TranscriptIngestionService:
             processing_seconds=round(time.perf_counter() - _t0_total, 2),
         )
 
+    async def process_existing_transcript_segments(
+        self,
+        transcript_id: UUID,
+        segments: list[SegmentCreate],
+        full_text: str,
+        duration_seconds: float | None = None,
+        stt_model: str | None = None,
+    ) -> TranscriptIngestionResult:
+        """
+        기능 요약: 이미 생성된 transcript row에 공식 텍스트와 검색 인덱스를 붙인다.
+
+        기능 흐름:
+            1. transcripts.full_text/status를 갱신한다.
+            2. 전달받은 segments를 기준으로 segment/chunk를 저장한다.
+            3. search_chunks와 embedding까지 생성해 RAG 검색 가능 상태로 만든다.
+
+        파라미터:
+            transcript_id: 업로드 시 미리 생성된 transcript UUID.
+            segments: 문서 추출/STT/임시 segment 승격 결과.
+            full_text: segments를 합친 공식 원문.
+        """
+        _t0_total = time.perf_counter()
+        await self._repository.update_transcript_result(
+            transcript_id,
+            TranscriptResultUpdate(
+                full_text=full_text,
+                duration_seconds=duration_seconds,
+                stt_model=stt_model,
+                status="processing",
+            ),
+        )
+        chunks = await self._run_pipeline(
+            transcript_id,
+            segments,
+            raise_index_errors=True,
+        )
+        return TranscriptIngestionResult(
+            transcript_id=transcript_id,
+            transcript=full_text,
+            duration_seconds=duration_seconds,
+            stt_model=stt_model or "",
+            segment_count=len(segments),
+            chunk_count=len(chunks),
+            processing_seconds=round(time.perf_counter() - _t0_total, 2),
+        )
+
+    async def build_index_for_segments(
+        self,
+        transcript_id: UUID,
+        segments: list[SegmentCreate],
+        cancellation_checker: Callable[[], Awaitable[bool]] | None = None,
+    ) -> list[ChunkCreate]:
+        """
+        기능 요약: 이미 텍스트화가 끝난 transcript의 segment/chunk/search index를 생성한다.
+
+        기능 흐름:
+            1. 전달받은 segments를 공식 segments 테이블에 저장한다.
+            2. chunk 생성과 metadata enrichment를 수행한다.
+            3. search_chunks와 embedding을 저장하며 실패 시 호출자에게 예외를 전달한다.
+
+        파라미터:
+            transcript_id: 업로드 시 생성된 transcript UUID.
+            segments: 문서 추출/STT/임시 segment 승격 결과.
+        """
+        return await self._run_pipeline(
+            transcript_id,
+            segments,
+            raise_index_errors=True,
+            cancellation_checker=cancellation_checker,
+        )
+
     # ingest_upload과 ingest_from_segments의 공통 후처리를 담당한다.
     # segments 저장 → 청크 생성/enrichment/저장 → search chunk 인덱싱 순서로 실행된다.
     async def _run_pipeline(
         self,
         transcript_id: UUID,
         segments: list[SegmentCreate],
+        raise_index_errors: bool = False,
+        cancellation_checker: Callable[[], Awaitable[bool]] | None = None,
     ) -> list[ChunkCreate]:
+        await raise_if_cancel_requested(cancellation_checker)
+
         _t = time.perf_counter()
         await self._repository.insert_segments(transcript_id, segments)
         logger.info("[timing]   insert_segments: %.2fs", time.perf_counter() - _t)
+        await raise_if_cancel_requested(cancellation_checker)
 
         _t = time.perf_counter()
-        chunks = await self._build_chunks(segments)
+        chunks = await self._build_chunks(segments, cancellation_checker)
         logger.info(
             "[timing]   chunk_planning: %.2fs  (chunks=%d)",
             time.perf_counter() - _t,
             len(chunks),
         )
+        await raise_if_cancel_requested(cancellation_checker)
 
         _t = time.perf_counter()
-        chunks = await self._enrich_chunks(chunks)
+        chunks = await self._enrich_chunks(chunks, cancellation_checker)
         logger.info(
             "[timing]   chunk_metadata: %.2fs  (chunks=%d, concurrency=%d)",
             time.perf_counter() - _t,
             len(chunks),
             self._get_summary_concurrency(),
         )
+        await raise_if_cancel_requested(cancellation_checker)
 
         _t = time.perf_counter()
         await self._repository.insert_chunks(transcript_id, chunks)
         logger.info("[timing]   insert_chunks: %.2fs", time.perf_counter() - _t)
+        await raise_if_cancel_requested(cancellation_checker)
 
         _t = time.perf_counter()
         # search chunks indexing — 실패해도 transcript는 completed 상태 유지
-        await self._build_and_index_search_chunks(transcript_id, segments)
+        await self._build_and_index_search_chunks(
+            transcript_id,
+            segments,
+            raise_on_failure=raise_index_errors,
+            cancellation_checker=cancellation_checker,
+        )
         logger.info("[timing]   search_index: %.2fs", time.perf_counter() - _t)
+        await raise_if_cancel_requested(cancellation_checker)
 
         return chunks
 
@@ -306,23 +397,41 @@ class TranscriptIngestionService:
     async def _build_chunks(
         self,
         segments: list[SegmentCreate],
+        cancellation_checker: Callable[[], Awaitable[bool]] | None = None,
     ) -> list[ChunkCreate]:
         try:
+            await raise_if_cancel_requested(cancellation_checker)
             planning_service = (
                 self._context_chunk_planning_service or ContextChunkPlanningService()
             )
             plan_groups = await planning_service.plan_chunks(segments)
+            await raise_if_cancel_requested(cancellation_checker)
             return self._planned_chunk_builder.build(segments, plan_groups)
         except Exception:
+            await raise_if_cancel_requested(cancellation_checker)
             return self._fallback_chunk_builder.build(segments)
 
     # chunk metadata를 생성합니다.
     # OpenAI 설정이 없거나 생성 중 오류가 나면 원본 chunk를 반환해 transcript 저장 흐름을 유지합니다.
-    async def _enrich_chunks(self, chunks: list[ChunkCreate]) -> list[ChunkCreate]:
+    async def _enrich_chunks(
+        self,
+        chunks: list[ChunkCreate],
+        cancellation_checker: Callable[[], Awaitable[bool]] | None = None,
+    ) -> list[ChunkCreate]:
         try:
+            await raise_if_cancel_requested(cancellation_checker)
             metadata_service = self._chunk_metadata_service or ChunkMetadataService()
-            return await metadata_service.enrich_chunks(chunks)
+            try:
+                return await metadata_service.enrich_chunks(
+                    chunks,
+                    cancellation_checker=cancellation_checker,
+                )
+            except TypeError as exc:
+                if "cancellation_checker" not in str(exc):
+                    raise
+                return await metadata_service.enrich_chunks(chunks)
         except Exception:
+            await raise_if_cancel_requested(cancellation_checker)
             return chunks
 
     # parent chunks를 vector search용 child search unit으로 분할하고 embedding을 생성해 저장한다.
@@ -334,6 +443,8 @@ class TranscriptIngestionService:
         self,
         transcript_id: UUID,
         segments: list[SegmentCreate],
+        raise_on_failure: bool = False,
+        cancellation_checker: Callable[[], Awaitable[bool]] | None = None,
     ) -> None:
         """
         기능 요약: parent chunks를 child search unit으로 분할하고 embedding을 생성해 저장한다.
@@ -351,20 +462,24 @@ class TranscriptIngestionService:
         """
         try:
             # 1. DB에서 parent chunks 조회 — insert_chunks() 완료 후 실제 UUID(parent_chunk_id) 확보
+            await raise_if_cancel_requested(cancellation_checker)
             parent_chunks = await self._repository.fetch_chunks_by_transcript(transcript_id)
             if not parent_chunks:
                 # parent chunk가 없으면 search chunk도 생성 불필요
                 return
 
             # 2. adaptive grouping으로 child search chunks 생성
+            await raise_if_cancel_requested(cancellation_checker)
             search_chunks = self._search_chunk_builder.build(parent_chunks, segments)
             if not search_chunks:
                 # 묶을 segment가 없으면 저장 불필요
                 return
 
             # 3. search chunk 텍스트 배열 추출 후 배치 embedding 생성
+            await raise_if_cancel_requested(cancellation_checker)
             texts = [chunk.text for chunk in search_chunks]
             embeddings = await self._embedding_service.embed(texts)
+            await raise_if_cancel_requested(cancellation_checker)
 
             # 4. embedding을 search chunks에 추가 (SearchChunkCreate는 frozen이므로 새 객체 생성)
             search_chunks_with_embeddings = [
@@ -397,8 +512,11 @@ class TranscriptIngestionService:
                 transcript_id,
                 search_chunks_with_embeddings,
             )
+            await raise_if_cancel_requested(cancellation_checker)
 
         except Exception as exc:
+            if raise_on_failure:
+                raise
             # embedding/search chunk 단계 실패는 transcript 실패로 전파하지 않음
             logger.error(
                 "Search chunk indexing failed for transcript %s: %s",

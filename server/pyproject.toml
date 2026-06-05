@@ -1,5 +1,5 @@
 [project]
-name = "recordoc-be"
+name = "wavb"
 version = "0.1.0"
 description = "FastAPI backend for VoiceDoc audio transcription and summarization."
 readme = "README.md"

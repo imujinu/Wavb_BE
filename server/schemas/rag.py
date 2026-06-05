@@ -4,7 +4,22 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
-TranscriptStatus = Literal["uploaded", "processing", "completed", "failed"]
+TranscriptStatus = Literal[
+    "uploaded",
+    "processing",
+    "completed",
+    "failed",
+    "cancel_requested",
+    "cancelled",
+]
+ProcessingStatus = Literal[
+    "pending",
+    "processing",
+    "completed",
+    "failed",
+    "cancel_requested",
+    "cancelled",
+]
 RagSearchScope = Literal["document", "web", "hybrid"]
 SourceRangeType = Literal["audio", "pdf", "ppt"]
 
@@ -14,6 +29,7 @@ class TranscriptCreate(BaseModel):
 
     source_audio_uri: str = Field(min_length=1)
     user_id: UUID | None = None
+    folder_id: UUID | None = None
     title: str | None = None
     original_filename: str | None = None
     mime_type: str | None = None
@@ -21,6 +37,10 @@ class TranscriptCreate(BaseModel):
     language: str = Field(default="ko", min_length=1)
     stt_model: str | None = None
     status: TranscriptStatus = "uploaded"
+    source_type: SourceRangeType | None = None
+    content_status: ProcessingStatus = "pending"
+    index_status: ProcessingStatus = "pending"
+    temporary_text: str | None = None
 
 
 class TranscriptResultUpdate(BaseModel):
@@ -31,6 +51,62 @@ class TranscriptResultUpdate(BaseModel):
     duration_seconds: float | None = Field(default=None, ge=0)
     stt_model: str | None = None
     status: TranscriptStatus = "completed"
+    error_message: str | None = None
+
+
+class TranscriptProcessingStatusUpdate(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    status: TranscriptStatus | None = None
+    content_status: ProcessingStatus | None = None
+    index_status: ProcessingStatus | None = None
+    error_message: str | None = None
+
+
+class TemporarySegmentCreate(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    segment_index: int = Field(ge=0)
+    start_seconds: float | None = Field(default=None, ge=0)
+    end_seconds: float | None = Field(default=None, ge=0)
+    text: str = Field(min_length=1)
+    raw_metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_optional_time_range(self) -> "TemporarySegmentCreate":
+        if (
+            self.start_seconds is not None
+            and self.end_seconds is not None
+            and self.end_seconds < self.start_seconds
+        ):
+            raise ValueError("end_seconds must be greater than or equal to start_seconds")
+        return self
+
+
+class TemporarySegmentDetail(TemporarySegmentCreate):
+    model_config = ConfigDict(frozen=True)
+
+    id: UUID | None = None
+    transcript_id: UUID
+
+
+class TranscriptProcessingDetail(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    id: UUID
+    user_id: UUID | None
+    title: str | None = None
+    source_audio_uri: str
+    original_filename: str | None = None
+    mime_type: str | None = None
+    duration_seconds: float | None = None
+    stt_model: str | None = None
+    full_text: str | None = None
+    status: TranscriptStatus
+    source_type: SourceRangeType | None = None
+    content_status: ProcessingStatus = "pending"
+    index_status: ProcessingStatus = "pending"
+    temporary_text: str | None = None
     error_message: str | None = None
 
 

@@ -14,8 +14,12 @@ from schemas.rag import (
     SegmentCreate,
     SummaryDocumentCreate,
     SummaryDocumentDetail,
+    TemporarySegmentCreate,
+    TemporarySegmentDetail,
     TranscriptCreate,
     TranscriptDetail,
+    TranscriptProcessingDetail,
+    TranscriptProcessingStatusUpdate,
     TranscriptResultUpdate,
     UploadedFileDetail,
 )
@@ -33,9 +37,10 @@ class RagRepository:
             INSERT INTO transcripts (
               id, user_id, title, source_audio_uri,
               original_filename, mime_type, duration_seconds, language,
-              stt_model, status
+              stt_model, status, folder_id, source_type,
+              content_status, index_status, temporary_text
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
             RETURNING id
             """,
             transcript_id,
@@ -48,6 +53,11 @@ class RagRepository:
             transcript.language,
             transcript.stt_model,
             transcript.status,
+            transcript.folder_id,
+            transcript.source_type,
+            transcript.content_status,
+            transcript.index_status,
+            transcript.temporary_text,
         )
         return row["id"] if row else transcript_id
 
@@ -180,6 +190,326 @@ class RagRepository:
             )
             for row in rows
         ]
+
+    # 처리 API에서 사용할 transcript 원본/상태 정보를 소유권 기준으로 조회한다.
+    async def get_transcript_for_processing(
+        self,
+        transcript_id: UUID,
+        user_id: UUID,
+    ) -> TranscriptProcessingDetail | None:
+        """
+        기능 요약: 지연 처리 API가 필요한 transcript 메타데이터와 처리 상태를 조회한다.
+
+        기능 흐름:
+            1. transcript_id와 user_id를 함께 조건으로 걸어 타인 파일 접근을 차단한다.
+            2. 원본 URI, 파일명, source_type, content/index 상태를 함께 읽는다.
+            3. 처리 서비스가 사용할 읽기 전용 모델로 매핑한다.
+
+        파라미터:
+            transcript_id: 처리할 transcript UUID.
+            user_id: 인증 사용자 UUID.
+        """
+        row = await self._connection.fetchrow(
+            """
+            SELECT id, user_id, title, source_audio_uri, original_filename,
+                   mime_type, duration_seconds, stt_model, full_text, status,
+                   source_type, content_status, index_status, temporary_text,
+                   error_message
+            FROM transcripts
+            WHERE id = $1 AND user_id = $2
+            """,
+            transcript_id,
+            user_id,
+        )
+        if row is None:
+            return None
+
+        return TranscriptProcessingDetail(
+            id=row["id"],
+            user_id=row["user_id"],
+            title=row["title"],
+            source_audio_uri=row["source_audio_uri"],
+            original_filename=row["original_filename"],
+            mime_type=row["mime_type"],
+            duration_seconds=(
+                float(row["duration_seconds"])
+                if row["duration_seconds"] is not None
+                else None
+            ),
+            stt_model=row["stt_model"],
+            full_text=row["full_text"],
+            status=row["status"],
+            source_type=row["source_type"],
+            content_status=row["content_status"],
+            index_status=row["index_status"],
+            temporary_text=row["temporary_text"],
+            error_message=row["error_message"],
+        )
+
+    # content/index 단계 상태를 별도로 갱신해 업로드 목록용 대표 status와 내부 상태를 함께 유지한다.
+    async def update_processing_status(
+        self,
+        transcript_id: UUID,
+        user_id: UUID,
+        update: TranscriptProcessingStatusUpdate,
+    ) -> bool:
+        row = await self._connection.fetchrow(
+            """
+            UPDATE transcripts
+            SET status = COALESCE($3, status),
+                content_status = COALESCE($4, content_status),
+                index_status = COALESCE($5, index_status),
+                error_message = $6,
+                processed_at = CASE
+                  WHEN $4 = 'completed' THEN now()
+                  ELSE processed_at
+                END,
+                indexed_at = CASE
+                  WHEN $5 = 'completed' THEN now()
+                  ELSE indexed_at
+                END,
+                cancelled_at = CASE
+                  WHEN $3 = 'cancelled' THEN now()
+                  ELSE cancelled_at
+                END,
+                updated_at = now()
+            WHERE id = $1 AND user_id = $2
+            RETURNING id
+            """,
+            transcript_id,
+            user_id,
+            update.status,
+            update.content_status,
+            update.index_status,
+            update.error_message,
+        )
+        return row is not None
+
+    async def request_processing_cancel(
+        self,
+        transcript_id: UUID,
+        user_id: UUID,
+    ) -> bool:
+        row = await self._connection.fetchrow(
+            """
+            UPDATE transcripts
+            SET cancel_requested_at = COALESCE(cancel_requested_at, now()),
+                status = CASE
+                  WHEN status IN ('completed', 'failed', 'cancelled') THEN status
+                  WHEN status = 'processing' THEN 'cancel_requested'
+                  ELSE 'cancelled'
+                END,
+                content_status = CASE
+                  WHEN status = 'processing' AND content_status = 'processing'
+                    THEN 'cancel_requested'
+                  WHEN status <> 'processing'
+                       AND content_status IN ('pending', 'processing', 'cancel_requested')
+                    THEN 'cancelled'
+                  ELSE content_status
+                END,
+                index_status = CASE
+                  WHEN status = 'processing' AND index_status = 'processing'
+                    THEN 'cancel_requested'
+                  WHEN status <> 'processing'
+                       AND index_status IN ('pending', 'processing', 'cancel_requested')
+                    THEN 'cancelled'
+                  ELSE index_status
+                END,
+                cancelled_at = CASE
+                  WHEN status = 'processing'
+                       OR status IN ('completed', 'failed', 'cancelled')
+                    THEN cancelled_at
+                  ELSE COALESCE(cancelled_at, now())
+                END,
+                updated_at = now()
+            WHERE id = $1 AND user_id = $2
+            RETURNING id
+            """,
+            transcript_id,
+            user_id,
+        )
+        return row is not None
+
+    async def is_processing_cancel_requested(
+        self,
+        transcript_id: UUID,
+        user_id: UUID,
+    ) -> bool:
+        row = await self._connection.fetchrow(
+            """
+            SELECT id
+            FROM transcripts
+            WHERE id = $1
+              AND user_id = $2
+              AND cancel_requested_at IS NOT NULL
+              AND status IN ('processing', 'cancel_requested', 'cancelled')
+            """,
+            transcript_id,
+            user_id,
+        )
+        return row is not None
+
+    async def is_processing_cancel_requested_after(
+        self,
+        transcript_id: UUID,
+        user_id: UUID,
+        started_at,
+    ) -> bool:
+        row = await self._connection.fetchrow(
+            """
+            SELECT id
+            FROM transcripts
+            WHERE id = $1
+              AND user_id = $2
+              AND cancel_requested_at IS NOT NULL
+              AND cancel_requested_at >= $3
+            """,
+            transcript_id,
+            user_id,
+            started_at,
+        )
+        return row is not None
+
+    # 실시간 STT final 이벤트를 임시 segment 테이블에 append/upsert한다.
+    async def insert_temporary_segment(
+        self,
+        transcript_id: UUID,
+        segment: TemporarySegmentCreate,
+    ) -> None:
+        await self._connection.execute(
+            """
+            INSERT INTO temporary_segments (
+              id, transcript_id, segment_index, start_seconds,
+              end_seconds, text, raw_metadata
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
+            ON CONFLICT (transcript_id, segment_index) DO UPDATE
+            SET start_seconds = EXCLUDED.start_seconds,
+                end_seconds = EXCLUDED.end_seconds,
+                text = EXCLUDED.text,
+                raw_metadata = EXCLUDED.raw_metadata
+            """,
+            uuid4(),
+            transcript_id,
+            segment.segment_index,
+            segment.start_seconds,
+            segment.end_seconds,
+            segment.text,
+            self._to_json(segment.raw_metadata),
+        )
+
+    async def list_temporary_segments(
+        self,
+        transcript_id: UUID,
+    ) -> list[TemporarySegmentDetail]:
+        rows = await self._connection.fetch(
+            """
+            SELECT id, transcript_id, segment_index, start_seconds,
+                   end_seconds, text, raw_metadata
+            FROM temporary_segments
+            WHERE transcript_id = $1
+            ORDER BY segment_index
+            """,
+            transcript_id,
+        )
+        return [
+            TemporarySegmentDetail(
+                id=row["id"],
+                transcript_id=row["transcript_id"],
+                segment_index=row["segment_index"],
+                start_seconds=(
+                    float(row["start_seconds"])
+                    if row["start_seconds"] is not None
+                    else None
+                ),
+                end_seconds=(
+                    float(row["end_seconds"])
+                    if row["end_seconds"] is not None
+                    else None
+                ),
+                text=row["text"],
+                raw_metadata=self._to_dict(row["raw_metadata"]),
+            )
+            for row in rows
+        ]
+
+    async def update_temporary_text(
+        self,
+        transcript_id: UUID,
+        temporary_text: str,
+    ) -> None:
+        await self._connection.execute(
+            """
+            UPDATE transcripts
+            SET temporary_text = $2, updated_at = now()
+            WHERE id = $1
+            """,
+            transcript_id,
+            temporary_text,
+        )
+
+    async def fetch_segments_by_transcript(
+        self,
+        transcript_id: UUID,
+    ) -> list[SegmentCreate]:
+        rows = await self._connection.fetch(
+            """
+            SELECT segment_index, speaker_label, start_seconds, end_seconds,
+                   text, confidence, raw_metadata, source_type,
+                   source_page_start, source_page_end,
+                   source_slide_start, source_slide_end,
+                   source_start_seconds, source_end_seconds
+            FROM segments
+            WHERE transcript_id = $1
+            ORDER BY segment_index
+            """,
+            transcript_id,
+        )
+        return [
+            SegmentCreate(
+                segment_index=row["segment_index"],
+                speaker_label=row["speaker_label"],
+                start_seconds=float(row["start_seconds"]),
+                end_seconds=float(row["end_seconds"]),
+                text=row["text"],
+                confidence=(
+                    float(row["confidence"])
+                    if row["confidence"] is not None
+                    else None
+                ),
+                raw_metadata=self._to_dict(row["raw_metadata"]),
+                source_type=self._row_value(row, "source_type"),
+                source_page_start=self._row_value(row, "source_page_start"),
+                source_page_end=self._row_value(row, "source_page_end"),
+                source_slide_start=self._row_value(row, "source_slide_start"),
+                source_slide_end=self._row_value(row, "source_slide_end"),
+                source_start_seconds=(
+                    float(self._row_value(row, "source_start_seconds"))
+                    if self._row_value(row, "source_start_seconds") is not None
+                    else None
+                ),
+                source_end_seconds=(
+                    float(self._row_value(row, "source_end_seconds"))
+                    if self._row_value(row, "source_end_seconds") is not None
+                    else None
+                ),
+            )
+            for row in rows
+        ]
+
+    async def count_segments_by_transcript(self, transcript_id: UUID) -> int:
+        row = await self._connection.fetchrow(
+            "SELECT COUNT(*) AS count FROM segments WHERE transcript_id = $1",
+            transcript_id,
+        )
+        return int(row["count"]) if row else 0
+
+    async def count_chunks_by_transcript(self, transcript_id: UUID) -> int:
+        row = await self._connection.fetchrow(
+            "SELECT COUNT(*) AS count FROM chunks WHERE transcript_id = $1",
+            transcript_id,
+        )
+        return int(row["count"]) if row else 0
 
     # STT 최소 단위 segment를 저장해서 playback, 재chunking, speaker 검색의 기준으로 사용한다.
     async def insert_segments(

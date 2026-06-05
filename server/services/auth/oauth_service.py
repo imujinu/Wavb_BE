@@ -1,13 +1,17 @@
 """OAuth 제공자별 인가 코드 교환 및 JWT 발급 서비스"""
+import logging
 from uuid import UUID
 
 import httpx
-from fastapi import HTTPException
+from fastapi import HTTPException, status
 
 from repositories.oauth_repository import OAuthRepository
 from schemas.auth import TokenResponse
 from settings import Settings, get_settings
 from utils import jwt_utils
+
+
+logger = logging.getLogger(__name__)
 
 
 class OAuthService:
@@ -43,17 +47,21 @@ class OAuthService:
         파라미터:
             code: Google OAuth 인가 코드 (예: "4/0AX4XfWi...")
         """
+        self._ensure_google_settings()
+        token_payload = {
+            "code": code,
+            "client_id": self._settings.google_client_id,
+            "client_secret": self._settings.google_client_secret,
+            "grant_type": "authorization_code",
+        }
+        if self._settings.google_redirect_uri.strip():
+            token_payload["redirect_uri"] = self._settings.google_redirect_uri
+
         async with httpx.AsyncClient() as client:
             # 1. 인가 코드 → Google 액세스 토큰
             token_resp = await self._post(
                 client, "https://oauth2.googleapis.com/token",
-                data={
-                    "code": code,
-                    "client_id": self._settings.google_client_id,
-                    "client_secret": self._settings.google_client_secret,
-                    "redirect_uri": self._settings.google_redirect_uri,
-                    "grant_type": "authorization_code",
-                },
+                data=token_payload,
                 error_label="Google 토큰 교환",
             )
             # 2. 액세스 토큰 → 사용자 정보
@@ -186,7 +194,46 @@ class OAuthService:
             resp.raise_for_status()
             return resp.json()
         except httpx.HTTPStatusError as e:
+            detail = self._provider_error_detail(error_label, e.response)
+            logger.warning("%s", detail)
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=detail,
+            )
             raise HTTPException(502, f"{error_label} 실패: {e.response.status_code}")
+
+    def _ensure_google_settings(self) -> None:
+        missing = [
+            name
+            for name, value in {
+                "GOOGLE_CLIENT_ID": self._settings.google_client_id,
+                "GOOGLE_CLIENT_SECRET": self._settings.google_client_secret,
+            }.items()
+            if not value.strip()
+        ]
+        if missing:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Missing Google OAuth settings: {', '.join(missing)}",
+            )
+
+    def _provider_error_detail(
+        self,
+        error_label: str,
+        response: httpx.Response,
+    ) -> str:
+        try:
+            payload = response.json()
+        except ValueError:
+            return f"{error_label} failed: {response.status_code}"
+
+        error = payload.get("error")
+        description = payload.get("error_description")
+        if error and description:
+            return f"{error_label} failed: {error} - {description}"
+        if error:
+            return f"{error_label} failed: {error}"
+        return f"{error_label} failed: {response.status_code}"
 
     async def _get(
         self,

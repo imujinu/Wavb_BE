@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
@@ -48,12 +49,14 @@ class LectureSummaryService:
         user_id: UUID,
     ) -> LectureSummaryResponse:
         # 1. 인증 사용자 소유 transcript만 조회
+        started_at = datetime.now(timezone.utc)
         transcript = await self._repository.get_transcript_by_id(transcript_id, user_id)
         if transcript is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Transcript not found.",
             )
+        await self._raise_if_cancel_requested(transcript_id, user_id, started_at)
         if transcript.status != "completed":
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -90,10 +93,12 @@ class LectureSummaryService:
             )
 
         # 4. LLM 생성 → payload 정규화 → 저장
+        await self._raise_if_cancel_requested(transcript_id, user_id, started_at)
         raw_payload = await self._create_payload(
             title=transcript.title,
             chunks=chunks,
         )
+        await self._raise_if_cancel_requested(transcript_id, user_id, started_at)
         payload = self._normalize_payload(raw_payload, chunks, transcript.title)
         summary_id = await self._repository.insert_lecture_summary(
             LectureSummaryCreate(
@@ -111,6 +116,23 @@ class LectureSummaryService:
 
     # OpenAI chat completion을 호출해 overview/contexts/keywords 구조의 JSON payload를 요청한다.
     # chunks의 topic/summary/metadata를 함께 전달해 전체 원문보다 안정적인 맥락 단위 요약을 만든다.
+    async def _raise_if_cancel_requested(
+        self,
+        transcript_id: UUID,
+        user_id: UUID,
+        started_at: datetime,
+    ) -> None:
+        checker = getattr(
+            self._repository,
+            "is_processing_cancel_requested_after",
+            None,
+        )
+        if checker is not None and await checker(transcript_id, user_id, started_at):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Processing was cancelled by user.",
+            )
+
     async def _create_payload(
         self,
         title: str | None,
