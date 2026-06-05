@@ -1,5 +1,6 @@
 import asyncio
 import json
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -7,6 +8,7 @@ from fastapi import HTTPException, status
 from openai import APIError, AsyncOpenAI
 
 from schemas.rag import ChunkCreate
+from services.files.processing_cancellation import raise_if_cancel_requested
 from settings import get_settings
 
 
@@ -40,9 +42,14 @@ class ChunkMetadataService:
 
     # 청크 목록을 받아 요약자료 생성에 사용할 topic, keyword, summary metadata를 생성합니다.
     # 각 청크는 독립적으로 처리되며, 한 청크의 실패가 전체 저장 흐름을 막지 않도록 원본 청크로 대체합니다.
-    async def enrich_chunks(self, chunks: list[ChunkCreate]) -> list[ChunkCreate]:
+    async def enrich_chunks(
+        self,
+        chunks: list[ChunkCreate],
+        cancellation_checker: Callable[[], Awaitable[bool]] | None = None,
+    ) -> list[ChunkCreate]:
         if not chunks:
             return []
+        await raise_if_cancel_requested(cancellation_checker)
         if self._metadata_concurrency <= 0:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -51,7 +58,9 @@ class ChunkMetadataService:
 
         semaphore = asyncio.Semaphore(self._metadata_concurrency)
         tasks = [
-            asyncio.create_task(self._enrich_chunk(index, chunk, semaphore))
+            asyncio.create_task(
+                self._enrich_chunk(index, chunk, semaphore, cancellation_checker)
+            )
             for index, chunk in enumerate(chunks)
         ]
 
@@ -63,6 +72,7 @@ class ChunkMetadataService:
                     task.cancel()
             raise
 
+        await raise_if_cancel_requested(cancellation_checker)
         return [
             chunk
             for _, chunk in sorted(enriched_chunks, key=lambda item: item[0])
@@ -75,11 +85,15 @@ class ChunkMetadataService:
         index: int,
         chunk: ChunkCreate,
         semaphore: asyncio.Semaphore,
+        cancellation_checker: Callable[[], Awaitable[bool]] | None = None,
     ) -> tuple[int, ChunkCreate]:
         try:
             async with semaphore:
+                await raise_if_cancel_requested(cancellation_checker)
                 metadata = await self._create_metadata(chunk)
+                await raise_if_cancel_requested(cancellation_checker)
         except Exception:
+            await raise_if_cancel_requested(cancellation_checker)
             return index, chunk
 
         return index, self._apply_metadata(chunk, metadata)

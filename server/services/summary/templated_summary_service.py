@@ -8,10 +8,15 @@
 
 import asyncio
 import json
+from collections.abc import Awaitable, Callable
 
 from fastapi import HTTPException, status
 from openai import APIError, AsyncOpenAI
 
+from services.files.processing_cancellation import (
+    ProcessingCancelledError,
+    raise_if_cancel_requested,
+)
 from services.summary.pdf_templates import TemplateSpec
 from settings import get_settings
 
@@ -58,6 +63,7 @@ class TemplatedSummaryService:
         transcript_text: str,
         template: TemplateSpec,
         title: str | None = None,
+        cancellation_checker: Callable[[], Awaitable[bool]] | None = None,
     ) -> dict:
         # 1. 빈 텍스트 방어
         if not transcript_text or not transcript_text.strip():
@@ -67,6 +73,7 @@ class TemplatedSummaryService:
             )
 
         text = transcript_text.strip()
+        await raise_if_cancel_requested(cancellation_checker)
 
         if len(text) <= self._max_input_chars:
             # 2. 짧은 입력: 단일 LLM 호출
@@ -74,6 +81,7 @@ class TemplatedSummaryService:
                 text=text,
                 template=template,
                 title=title,
+                cancellation_checker=cancellation_checker,
             )
         else:
             # 3. 긴 입력: map-reduce
@@ -81,9 +89,11 @@ class TemplatedSummaryService:
                 text=text,
                 template=template,
                 title=title,
+                cancellation_checker=cancellation_checker,
             )
 
         # 4. 누락/타입 오류 섹션을 빈 값으로 보정해 PDF 렌더가 항상 안정적으로 동작하도록 한다
+        await raise_if_cancel_requested(cancellation_checker)
         return self._normalize_payload(raw_payload, template)
 
     # 긴 텍스트를 윈도우로 분할해 병렬 부분요약(map) 후 통합 구조화(reduce)한다.
@@ -100,12 +110,19 @@ class TemplatedSummaryService:
         text: str,
         template: TemplateSpec,
         title: str | None,
+        cancellation_checker: Callable[[], Awaitable[bool]] | None = None,
     ) -> dict:
         # 1. 윈도우 분할
+        await raise_if_cancel_requested(cancellation_checker)
         windows = self._split_text(text, self._text_chunk_chars)
 
         # 2. 병렬 부분요약(map)
-        partial_summaries = await self._summarize_windows(windows, template)
+        partial_summaries = await self._summarize_windows(
+            windows,
+            template,
+            cancellation_checker=cancellation_checker,
+        )
+        await raise_if_cancel_requested(cancellation_checker)
         combined = "\n\n".join(
             f"[부분요약 {i + 1}]\n{s}" for i, s in enumerate(partial_summaries)
         )
@@ -113,7 +130,12 @@ class TemplatedSummaryService:
         # 3. 부분요약 합산이 여전히 상한 초과 시 한 번 더 분할 요약(재귀 1회)
         if len(combined) > self._max_input_chars:
             sub_windows = self._split_text(combined, self._text_chunk_chars)
-            sub_summaries = await self._summarize_windows(sub_windows, template)
+            sub_summaries = await self._summarize_windows(
+                sub_windows,
+                template,
+                cancellation_checker=cancellation_checker,
+            )
+            await raise_if_cancel_requested(cancellation_checker)
             combined = "\n\n".join(
                 f"[부분요약 {i + 1}]\n{s}" for i, s in enumerate(sub_summaries)
             )
@@ -123,6 +145,7 @@ class TemplatedSummaryService:
             text=combined,
             template=template,
             title=title,
+            cancellation_checker=cancellation_checker,
         )
 
     # 윈도우 목록을 Semaphore로 동시 실행 수를 제한하며 병렬 부분요약한다.
@@ -138,10 +161,20 @@ class TemplatedSummaryService:
         self,
         windows: list[str],
         template: TemplateSpec,
+        cancellation_checker: Callable[[], Awaitable[bool]] | None = None,
     ) -> list[str]:
+        await raise_if_cancel_requested(cancellation_checker)
         semaphore = asyncio.Semaphore(self._summary_concurrency)
         tasks = [
-            asyncio.create_task(self._summarize_window(idx, window, template, semaphore))
+            asyncio.create_task(
+                self._summarize_window(
+                    idx,
+                    window,
+                    template,
+                    semaphore,
+                    cancellation_checker,
+                )
+            )
             for idx, window in enumerate(windows)
         ]
         try:
@@ -155,6 +188,7 @@ class TemplatedSummaryService:
             raise
 
         # 3. 인덱스 정렬로 원문 순서 보존
+        await raise_if_cancel_requested(cancellation_checker)
         return [s for _, s in sorted(indexed, key=lambda x: x[0])]
 
     # 단일 윈도우를 템플릿 섹션 관점으로 부분 요약한다(map 단계).
@@ -174,8 +208,10 @@ class TemplatedSummaryService:
         window: str,
         template: TemplateSpec,
         semaphore: asyncio.Semaphore,
+        cancellation_checker: Callable[[], Awaitable[bool]] | None = None,
     ) -> tuple[int, str]:
         async with semaphore:
+            await raise_if_cancel_requested(cancellation_checker)
             # 1. 템플릿 섹션 label을 프롬프트에 포함해 관련 사실 보존 지시
             section_labels = ", ".join(f'"{s.label}"' for s in template.sections)
             prompt = (
@@ -194,6 +230,9 @@ class TemplatedSummaryService:
                         {"role": "user", "content": prompt},
                     ],
                 )
+                await raise_if_cancel_requested(cancellation_checker)
+            except ProcessingCancelledError:
+                raise
             except APIError as exc:
                 raise HTTPException(
                     status_code=status.HTTP_502_BAD_GATEWAY,
@@ -222,8 +261,10 @@ class TemplatedSummaryService:
         text: str,
         template: TemplateSpec,
         title: str | None,
+        cancellation_checker: Callable[[], Awaitable[bool]] | None = None,
     ) -> dict:
         try:
+            await raise_if_cancel_requested(cancellation_checker)
             # 1. 섹션 지시문 + 출력 스키마를 담은 프롬프트로 요약 요청
             response = await self._client.chat.completions.create(
                 model=self._model,
@@ -237,6 +278,9 @@ class TemplatedSummaryService:
                     },
                 ],
             )
+            await raise_if_cancel_requested(cancellation_checker)
+        except ProcessingCancelledError:
+            raise
         except APIError as exc:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,

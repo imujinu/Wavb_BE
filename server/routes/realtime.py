@@ -9,10 +9,12 @@ from db.connection import DatabaseConnection, get_connection
 from dependencies.auth import get_current_user
 from repositories.rag_repository import RagRepository
 from schemas.auth import CurrentUser
+from schemas.rag import TemporarySegmentCreate, TranscriptCreate
 from schemas.realtime import RealtimeSaveRequest, RealtimeSaveResponse, RealtimeSummaryEvent
 from services.audio.transcript_ingestion_service import TranscriptIngestionService
 from services.realtime.provider_factory import create_stt_provider
 from services.realtime.summary_buffer import RealtimeSummaryBuffer
+from utils import jwt_utils
 
 router = APIRouter(prefix="/audio", tags=["realtime"])
 
@@ -26,7 +28,11 @@ async def get_rag_repository(
 
 
 @router.websocket("/realtime/connect")
-async def realtime_connect(websocket: WebSocket, token: str) -> None:
+async def realtime_connect(
+    websocket: WebSocket,
+    token: str,
+    connection: DatabaseConnection = Depends(get_connection),
+) -> None:
     """
     실시간 전사 WebSocket 엔드포인트.
 
@@ -45,7 +51,7 @@ async def realtime_connect(websocket: WebSocket, token: str) -> None:
     # JWT 검증 — 유효하지 않으면 4001 코드로 거절
     # 4001을 사용하는 이유: 표준 WebSocket close code 중 인증 실패를 나타내는 관례적 값
     try:
-        await _validate_ws_token(token)
+        current_user = await _validate_ws_token(token)
     except Exception:
         logger.warning("WS 토큰 검증 실패 — 4001로 연결 거절")
         await websocket.close(code=4001)
@@ -53,10 +59,22 @@ async def realtime_connect(websocket: WebSocket, token: str) -> None:
 
     await websocket.accept()
     logger.info("WS 연결 수락 — 전사 세션 시작")
+    repository = RagRepository(connection)
+    transcript_id = await repository.create_transcript(
+        TranscriptCreate(
+            user_id=current_user.user_id,
+            title="Realtime recording",
+            source_audio_uri="realtime://recording",
+            source_type="audio",
+            status="uploaded",
+            content_status="pending",
+            index_status="pending",
+        )
+    )
 
     provider = create_stt_provider()
     await provider.connect()
-    await websocket.send_json({"type": "ready"})
+    await websocket.send_json({"type": "ready", "transcript_id": str(transcript_id)})
     logger.info("STT provider 연결 완료, ready 전송")
 
     async def forward_audio() -> None:
@@ -114,6 +132,19 @@ async def realtime_connect(websocket: WebSocket, token: str) -> None:
                 # interim을 버퍼에 쌓으면 중복 텍스트로 요약이 망가진다.
                 if event.is_final:
                     if event.text:
+                        await repository.insert_temporary_segment(
+                            transcript_id,
+                            TemporarySegmentCreate(
+                                segment_index=final_index,
+                                start_seconds=None,
+                                end_seconds=None,
+                                text=event.text,
+                                raw_metadata={
+                                    "provider": "deepgram",
+                                    "source": "realtime",
+                                },
+                            ),
+                        )
                         buffer.add(event.text, final_index)
                     if buffer.should_flush():
                         task = asyncio.create_task(
@@ -133,11 +164,18 @@ async def realtime_connect(websocket: WebSocket, token: str) -> None:
                 "type": "error",
                 "message": "전사 서비스에 연결할 수 없습니다.",
             })
+        finally:
+            temporary_segments = await repository.list_temporary_segments(transcript_id)
+            temporary_text = " ".join(
+                segment.text for segment in temporary_segments if segment.text.strip()
+            )
+            if temporary_text:
+                await repository.update_temporary_text(transcript_id, temporary_text)
 
     await asyncio.gather(forward_audio(), forward_transcripts())
 
 
-async def _validate_ws_token(token: str) -> dict:
+async def _validate_ws_token(token: str) -> CurrentUser:
     """
     WebSocket query parameter로 전달된 JWT를 검증합니다.
 
@@ -145,21 +183,9 @@ async def _validate_ws_token(token: str) -> dict:
     WebSocket 핸드셰이크는 커스텀 HTTP 헤더를 브라우저/앱에서 설정하기
     어려우므로 JWT를 query parameter로 전달하는 것이 일반적입니다.
     """
-    # 토큰 발급(auth_service)과 동일하게 PyJWT로 검증한다.
-    # 라이브러리(jose vs PyJWT)·알고리즘을 일치시켜 검증 실패를 방지한다.
-    import jwt
     from settings import get_settings
 
-    settings = get_settings()
-    try:
-        payload = jwt.decode(
-            token,
-            settings.jwt_secret_key,
-            algorithms=[settings.jwt_algorithm],
-        )
-        return payload
-    except jwt.InvalidTokenError:
-        raise ValueError("유효하지 않은 토큰")
+    return jwt_utils.decode_access_token(token, get_settings())
 
 
 async def _send_summary(

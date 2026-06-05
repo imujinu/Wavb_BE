@@ -38,26 +38,49 @@ class DocumentTextExtractionService:
         file_name: str,
     ) -> DocumentTextExtractionResult:
         suffix = Path(file_name).suffix.lower()
-        if suffix not in {".pdf", ".ppt", ".pptx"}:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Unsupported document file type. Allowed extensions: .pdf, .ppt, .pptx",
-            )
+        self._validate_suffix(suffix)
 
         with tempfile.TemporaryDirectory() as temp_dir_name:
             input_path = Path(temp_dir_name) / f"input{suffix}"
             await self._save_upload(file, input_path)
+            return await self.extract_path(input_path, file_name)
 
-            if suffix == ".pdf":
-                segments = await self._extract_pdf(input_path)
-                source_type = "pdf"
-            elif suffix == ".pptx":
-                segments = await self._extract_pptx(input_path)
-                source_type = "ppt"
-            else:
-                converted_path = await self._convert_legacy_ppt(input_path)
-                segments = await self._extract_pptx(converted_path)
-                source_type = "ppt"
+    async def extract_path(
+        self,
+        path: Path,
+        file_name: str,
+    ) -> DocumentTextExtractionResult:
+        """
+        기능 요약: 서버에 저장된 문서 파일 경로에서 텍스트를 추출한다.
+
+        기능 흐름:
+            1. 표시 파일명 기준 확장자를 검증한다.
+            2. PDF/PPTX/PPT 경로에 맞는 추출기를 실행한다.
+            3. 추출 segment와 전체 텍스트를 처리 파이프라인 입력으로 반환한다.
+
+        파라미터:
+            path: UploadStorageService가 저장한 로컬 파일 경로.
+            file_name: 원본 파일명 또는 저장 파일명 (예: lecture.pdf).
+        """
+        suffix = Path(file_name).suffix.lower() or path.suffix.lower()
+        self._validate_suffix(suffix)
+
+        if not path.exists() or path.stat().st_size == 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Stored document file is missing or empty.",
+            )
+
+        if suffix == ".pdf":
+            segments = await self._extract_pdf(path)
+            source_type = "pdf"
+        elif suffix == ".pptx":
+            segments = await self._extract_pptx(path)
+            source_type = "ppt"
+        else:
+            converted_path = await self._convert_legacy_ppt(path)
+            segments = await self._extract_pptx(converted_path)
+            source_type = "ppt"
 
         text = "\n".join(segment.text for segment in segments if segment.text.strip())
         if not text.strip():
@@ -71,6 +94,13 @@ class DocumentTextExtractionService:
             segments=segments,
             source_type=source_type,
         )
+
+    def _validate_suffix(self, suffix: str) -> None:
+        if suffix not in {".pdf", ".ppt", ".pptx"}:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Unsupported document file type. Allowed extensions: .pdf, .ppt, .pptx",
+            )
 
     async def _save_upload(self, file: UploadFile, input_path: Path) -> None:
         with input_path.open("wb") as output_file:

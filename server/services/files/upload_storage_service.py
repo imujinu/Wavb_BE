@@ -67,3 +67,40 @@ class UploadStorageService:
             path=stored_path,
             original_filename=file_name,
         )
+
+    def resolve_uri(self, uri: str) -> Path:
+        """
+        기능 요약: DB에 저장된 public upload URI를 서버 로컬 파일 경로로 변환한다.
+
+        기능 흐름:
+            1. URI가 설정된 public path 아래인지 검증한다.
+            2. 상대 경로 조각에 경로 조작 값이 없는지 확인한다.
+            3. UPLOAD_STORAGE_DIR 아래의 실제 Path를 반환한다.
+
+        파라미터:
+            uri: DB에 저장된 파일 URI (예: /uploads/user-id/file.pdf).
+        """
+        public_prefix = self._public_path.rstrip("/") + "/"
+        if not uri.startswith(public_prefix):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Unsupported upload URI.",
+            )
+
+        relative = uri[len(public_prefix):]
+        parts = Path(relative).parts
+        if not parts or any(part in {"", ".", ".."} for part in parts):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid upload URI.",
+            )
+
+        path = self._storage_dir.joinpath(*parts)
+        storage_root = self._storage_dir.resolve()
+        resolved_path = path.resolve()
+        if storage_root not in resolved_path.parents and resolved_path != storage_root:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid upload URI.",
+            )
+        return resolved_path

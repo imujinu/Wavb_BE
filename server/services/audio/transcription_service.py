@@ -74,25 +74,11 @@ class TranscriptionService:
             with tempfile.TemporaryDirectory() as temp_dir_name:
                 input_path = Path(temp_dir_name) / f"input{suffix}"
                 await self._save_upload(file, input_path)
-                analysis = self._audio_analysis_service.analyze(input_path)
-                chunk_seconds = calculate_chunk_seconds(
-                    duration_seconds=analysis.duration_seconds,
-                    concurrency=self._transcription_concurrency,
-                    min_seconds=self._chunk_min_seconds,
-                    max_seconds=self._chunk_max_seconds,
-                )
-                chunk_plans = build_chunk_plan(
-                    duration_seconds=analysis.duration_seconds,
-                    chunk_seconds=chunk_seconds,
-                    overlap_seconds=self._chunk_overlap_seconds,
-                )
-                chunks = self._audio_chunking_service.create_chunks(
+                return await self._transcribe_input_path(
                     input_path=input_path,
-                    output_dir=Path(temp_dir_name) / "chunks",
-                    plans=chunk_plans,
-                    target_max_mb=self._target_chunk_max_mb,
+                    work_dir=Path(temp_dir_name),
+                    language=language,
                 )
-                transcriptions = await self._collect_chunk_transcriptions(chunks, language)
         except HTTPException:
             raise
         except APIError as exc:
@@ -108,6 +94,76 @@ class TranscriptionService:
                 detail="Audio transcription failed.",
             ) from exc
 
+    async def transcribe_path(
+        self,
+        path: Path,
+        language: str = "ko",
+    ) -> TranscriptionResult:
+        """
+        기능 요약: 서버에 저장된 오디오 파일 경로를 STT 처리한다.
+
+        기능 흐름:
+            1. 저장된 파일이 존재하고 비어 있지 않은지 확인한다.
+            2. 기존 chunking/STT 병렬 처리 흐름을 재사용한다.
+            3. 전체 텍스트와 시간 segment를 반환한다.
+
+        파라미터:
+            path: UploadStorageService가 저장한 로컬 오디오 파일 경로.
+            language: STT provider 언어 코드. 기본값은 기존과 동일하게 ko.
+        """
+        if not path.exists() or path.stat().st_size == 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Stored audio file is missing or empty.",
+            )
+
+        try:
+            with tempfile.TemporaryDirectory() as temp_dir_name:
+                return await self._transcribe_input_path(
+                    input_path=path,
+                    work_dir=Path(temp_dir_name),
+                    language=language,
+                )
+        except HTTPException:
+            raise
+        except APIError as exc:
+            print(exc)
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Audio transcription provider failed.",
+            ) from exc
+        except Exception as exc:
+            print(exc)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Audio transcription failed.",
+            ) from exc
+
+    async def _transcribe_input_path(
+        self,
+        input_path: Path,
+        work_dir: Path,
+        language: str = "ko",
+    ) -> TranscriptionResult:
+        analysis = self._audio_analysis_service.analyze(input_path)
+        chunk_seconds = calculate_chunk_seconds(
+            duration_seconds=analysis.duration_seconds,
+            concurrency=self._transcription_concurrency,
+            min_seconds=self._chunk_min_seconds,
+            max_seconds=self._chunk_max_seconds,
+        )
+        chunk_plans = build_chunk_plan(
+            duration_seconds=analysis.duration_seconds,
+            chunk_seconds=chunk_seconds,
+            overlap_seconds=self._chunk_overlap_seconds,
+        )
+        chunks = self._audio_chunking_service.create_chunks(
+            input_path=input_path,
+            output_dir=work_dir / "chunks",
+            plans=chunk_plans,
+            target_max_mb=self._target_chunk_max_mb,
+        )
+        transcriptions = await self._collect_chunk_transcriptions(chunks, language)
         return TranscriptionResult(
             text=self._merge_chunk_transcriptions(transcriptions).strip(),
             duration_seconds=analysis.duration_seconds,

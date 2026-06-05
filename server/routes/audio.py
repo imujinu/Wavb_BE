@@ -1,5 +1,5 @@
 from collections.abc import AsyncIterator
-from datetime import date
+from datetime import date, datetime, timezone
 from io import BytesIO
 from uuid import UUID
 
@@ -20,6 +20,7 @@ from services.summary.lecture_summary_service import LectureSummaryService
 from services.summary.templated_summary_service import TemplatedSummaryService
 from services.audio.transcript_ingestion_service import TranscriptIngestionService
 from services.audio.transcription_service import TranscriptionService
+from services.files.processing_cancellation import ProcessingCancelledError
 
 
 router = APIRouter(prefix="/audio", tags=["audio"])
@@ -158,6 +159,26 @@ def _pdf_streaming_response(
     )
 
 
+def _summary_cancellation_checker(
+    repository: RagRepository,
+    transcript_id: UUID,
+    user_id: UUID,
+):
+    started_at = datetime.now(timezone.utc)
+
+    async def checker() -> bool:
+        is_cancel_requested = getattr(
+            repository,
+            "is_processing_cancel_requested_after",
+            None,
+        )
+        if is_cancel_requested is None:
+            return False
+        return await is_cancel_requested(transcript_id, user_id, started_at)
+
+    return checker
+
+
 @router.get("/summary-templates", response_model=list[TemplateSpec])
 def list_summary_templates() -> list[TemplateSpec]:
     """
@@ -247,11 +268,37 @@ async def create_summary_pdf(
         )
 
     # 3. 템플릿 섹션 스키마에 맞춘 구조화 요약 생성
-    payload = await summary_service.summarize_for_template(
-        transcript_text=transcript.full_text,
-        template=template,
-        title=transcript.title,
+    cancellation_checker = _summary_cancellation_checker(
+        repository,
+        transcript_id,
+        current_user.user_id,
     )
+    try:
+        payload = await summary_service.summarize_for_template(
+            transcript_text=transcript.full_text,
+            template=template,
+            title=transcript.title,
+            cancellation_checker=cancellation_checker,
+        )
+    except TypeError as exc:
+        if "cancellation_checker" not in str(exc):
+            raise
+        payload = await summary_service.summarize_for_template(
+            transcript_text=transcript.full_text,
+            template=template,
+            title=transcript.title,
+        )
+    except ProcessingCancelledError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Processing was cancelled by user.",
+        ) from exc
+
+    if await cancellation_checker():
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Processing was cancelled by user.",
+        )
 
     # 4. 수정→재렌더를 위해 구조화 payload를 영속화
     document_id = await repository.insert_summary_document(
