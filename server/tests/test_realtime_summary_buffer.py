@@ -68,6 +68,31 @@ async def test_flush_empty_range_returns_negative_one() -> None:
     assert end_idx == -1
 
 
+async def test_drain_resets_buffer_and_snapshot_isolated() -> None:
+    buffer, fake = make_buffer()
+    buffer.add("first", final_index=0)
+
+    snapshot = buffer.drain()
+
+    assert snapshot.full_text == "first"
+    assert snapshot.start_final_index == 0
+    assert snapshot.end_final_index == 0
+    assert buffer.is_empty
+
+    buffer.add("second", final_index=1)
+    summary, keywords = await buffer.summarize_snapshot(snapshot)
+
+    assert summary == fake.summary
+    assert keywords == ["k1", "k2"]
+    assert fake.calls == ["first"]
+
+    next_snapshot = buffer.drain()
+
+    assert next_snapshot.full_text == "second"
+    assert next_snapshot.start_final_index == 1
+    assert next_snapshot.end_final_index == 1
+
+
 async def test_flush_failure_preserves_segments_and_range() -> None:
     buffer = RealtimeSummaryBuffer(
         threshold_seconds=25.0, summary_service=FailingSummaryService()
