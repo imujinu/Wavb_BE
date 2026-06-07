@@ -4,6 +4,9 @@ from dataclasses import dataclass
 from services.summary.summary_service import SummaryService
 
 
+DEFAULT_REALTIME_SUMMARY_THRESHOLD_SECONDS = 55.0
+
+
 @dataclass(frozen=True)
 class RealtimeSummarySnapshot:
     full_text: str
@@ -20,7 +23,7 @@ class RealtimeSummaryBuffer:
 
     def __init__(
         self,
-        threshold_seconds: float = 25.0,
+        threshold_seconds: float = DEFAULT_REALTIME_SUMMARY_THRESHOLD_SECONDS,
         summary_service: SummaryService | None = None,
     ) -> None:
         self._segments: list[str] = []

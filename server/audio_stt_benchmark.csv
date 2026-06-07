@@ -1,0 +1,7 @@
+file_label,file_path,audio_duration_seconds,chunk_seconds,concurrency,status,total_seconds,chunk_count,chunk_create_seconds,stt_wall_seconds,rate_limit_error_count,failed_attempt_count,retry_count,transcript_length,estimated_cost_usd,within_target,error
+30m,C:\Users\wlsdn\github\Recordoc_BE\server\assets\30m.mp3,1808.95,300,1,ok,102.146,7,5.853,96.292,0,0,0,11592,0.181,true,
+30m,C:\Users\wlsdn\github\Recordoc_BE\server\assets\30m.mp3,1808.95,300,2,ok,56.638,7,6.599,50.039,0,0,0,11476,0.181,true,
+30m,C:\Users\wlsdn\github\Recordoc_BE\server\assets\30m.mp3,1808.95,300,3,ok,40.028,7,6.358,33.669,0,0,0,11479,0.181,true,
+30m,C:\Users\wlsdn\github\Recordoc_BE\server\assets\30m.mp3,1808.95,600,1,ok,104.295,4,5.811,98.485,0,0,0,11498,0.181,true,
+30m,C:\Users\wlsdn\github\Recordoc_BE\server\assets\30m.mp3,1808.95,600,2,ok,66.216,4,5.774,60.442,0,0,0,11167,0.181,true,
+30m,C:\Users\wlsdn\github\Recordoc_BE\server\assets\30m.mp3,1808.95,600,3,ok,40.883,4,6.075,34.807,0,0,0,11194,0.181,true,

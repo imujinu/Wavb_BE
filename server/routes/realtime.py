@@ -14,6 +14,7 @@ from schemas.realtime import RealtimeSaveRequest, RealtimeSaveResponse, Realtime
 from services.audio.transcript_ingestion_service import TranscriptIngestionService
 from services.realtime.provider_factory import create_stt_provider
 from services.realtime.summary_buffer import (
+    DEFAULT_REALTIME_SUMMARY_THRESHOLD_SECONDS,
     RealtimeSummaryBuffer,
     RealtimeSummarySnapshot,
 )
@@ -105,7 +106,9 @@ async def realtime_connect(
 
     async def forward_transcripts() -> None:
         """Deepgram → 모바일: 전사 이벤트를 JSON으로 전달하고, 임계값 도달 시 요약을 생성한다."""
-        buffer = RealtimeSummaryBuffer(threshold_seconds=25.0)
+        buffer = RealtimeSummaryBuffer(
+            threshold_seconds=DEFAULT_REALTIME_SUMMARY_THRESHOLD_SECONDS
+        )
         segment_index = 0
         # final transcript에 부여하는 단조 증가 인덱스.
         # FE는 이 값을 세그먼트 키로 저장하고, summary의 범위(start/end_final_index)와 매칭해

@@ -1,6 +1,9 @@
 import pytest
 
-from services.realtime.summary_buffer import RealtimeSummaryBuffer
+from services.realtime.summary_buffer import (
+    DEFAULT_REALTIME_SUMMARY_THRESHOLD_SECONDS,
+    RealtimeSummaryBuffer,
+)
 
 
 class FakeSummaryService:
@@ -25,6 +28,13 @@ def make_buffer(**kwargs) -> tuple[RealtimeSummaryBuffer, FakeSummaryService]:
     fake = FakeSummaryService(**kwargs)
     buffer = RealtimeSummaryBuffer(threshold_seconds=25.0, summary_service=fake)
     return buffer, fake
+
+
+def test_default_summary_threshold_is_55_seconds() -> None:
+    buffer = RealtimeSummaryBuffer(summary_service=FakeSummaryService())
+
+    assert DEFAULT_REALTIME_SUMMARY_THRESHOLD_SECONDS == 55.0
+    assert buffer._threshold == 55.0
 
 
 async def test_add_tracks_final_index_range() -> None:
