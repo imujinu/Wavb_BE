@@ -13,7 +13,11 @@ from schemas.rag import TemporarySegmentCreate, TranscriptCreate
 from schemas.realtime import RealtimeSaveRequest, RealtimeSaveResponse, RealtimeSummaryEvent
 from services.audio.transcript_ingestion_service import TranscriptIngestionService
 from services.realtime.provider_factory import create_stt_provider
-from services.realtime.summary_buffer import RealtimeSummaryBuffer
+from services.realtime.summary_buffer import (
+    DEFAULT_REALTIME_SUMMARY_THRESHOLD_SECONDS,
+    RealtimeSummaryBuffer,
+    RealtimeSummarySnapshot,
+)
 from utils import jwt_utils
 
 router = APIRouter(prefix="/audio", tags=["realtime"])
@@ -102,7 +106,9 @@ async def realtime_connect(
 
     async def forward_transcripts() -> None:
         """Deepgram → 모바일: 전사 이벤트를 JSON으로 전달하고, 임계값 도달 시 요약을 생성한다."""
-        buffer = RealtimeSummaryBuffer(threshold_seconds=25.0)
+        buffer = RealtimeSummaryBuffer(
+            threshold_seconds=DEFAULT_REALTIME_SUMMARY_THRESHOLD_SECONDS
+        )
         segment_index = 0
         # final transcript에 부여하는 단조 증가 인덱스.
         # FE는 이 값을 세그먼트 키로 저장하고, summary의 범위(start/end_final_index)와 매칭해
@@ -147,13 +153,15 @@ async def realtime_connect(
                         )
                         buffer.add(event.text, final_index)
                     if buffer.should_flush():
-                        task = asyncio.create_task(
-                            _send_summary(websocket, buffer, segment_index)
-                        )
-                        _background_tasks.add(task)
-                        # 태스크 완료 시 set에서 제거하여 메모리 누수 방지
-                        task.add_done_callback(_background_tasks.discard)
-                        segment_index += 1
+                        snapshot = buffer.drain()
+                        if not snapshot.is_empty:
+                            task = asyncio.create_task(
+                                _send_summary(websocket, buffer, snapshot, segment_index)
+                            )
+                            _background_tasks.add(task)
+                            # 태스크 완료 시 set에서 제거하여 메모리 누수 방지
+                            task.add_done_callback(_background_tasks.discard)
+                            segment_index += 1
                     # final 단위로만 인덱스 증가 (빈 텍스트 final 포함 — FE는 빈 final을 저장 안 하므로 무해)
                     final_index += 1
         except WebSocketDisconnect:
@@ -191,6 +199,7 @@ async def _validate_ws_token(token: str) -> CurrentUser:
 async def _send_summary(
     websocket: WebSocket,
     buffer: RealtimeSummaryBuffer,
+    snapshot: RealtimeSummarySnapshot,
     segment_index: int,
 ) -> None:
     """
@@ -208,13 +217,13 @@ async def _send_summary(
         segment_index: 몇 번째 구간인지 (0부터)
     """
     try:
-        full_text, summary, keywords, start_idx, end_idx = await buffer.flush_with_summary()
+        summary, keywords = await buffer.summarize_snapshot(snapshot)
         event = RealtimeSummaryEvent(
             summary=summary,
-            full_text=full_text,
+            full_text=snapshot.full_text,
             segment_index=segment_index,
-            start_final_index=start_idx,
-            end_final_index=end_idx,
+            start_final_index=snapshot.start_final_index,
+            end_final_index=snapshot.end_final_index,
             keywords=keywords,
         )
         await websocket.send_json(event.model_dump())

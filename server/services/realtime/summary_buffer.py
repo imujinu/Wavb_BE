@@ -1,6 +1,21 @@
 import time
+from dataclasses import dataclass
 
 from services.summary.summary_service import SummaryService
+
+
+DEFAULT_REALTIME_SUMMARY_THRESHOLD_SECONDS = 55.0
+
+
+@dataclass(frozen=True)
+class RealtimeSummarySnapshot:
+    full_text: str
+    start_final_index: int
+    end_final_index: int
+
+    @property
+    def is_empty(self) -> bool:
+        return not self.full_text.strip()
 
 
 class RealtimeSummaryBuffer:
@@ -8,7 +23,7 @@ class RealtimeSummaryBuffer:
 
     def __init__(
         self,
-        threshold_seconds: float = 25.0,
+        threshold_seconds: float = DEFAULT_REALTIME_SUMMARY_THRESHOLD_SECONDS,
         summary_service: SummaryService | None = None,
     ) -> None:
         self._segments: list[str] = []
@@ -64,6 +79,33 @@ class RealtimeSummaryBuffer:
             interim 도중 flush되면 미완성 문장이 요약에 포함될 수 있다.
         """
         return (time.monotonic() - self._start_time) >= self._threshold
+
+    def drain(self) -> RealtimeSummarySnapshot:
+        """
+        Capture the current buffered final transcripts and immediately reset the buffer.
+
+        This keeps summary generation from racing with the live transcript stream: the
+        background summary task works on the returned snapshot while new final
+        transcripts start filling a fresh buffer.
+        """
+        snapshot = RealtimeSummarySnapshot(
+            full_text=" ".join(self._segments),
+            start_final_index=(
+                self._start_final_index if self._start_final_index is not None else -1
+            ),
+            end_final_index=self._end_final_index,
+        )
+        self._segments = []
+        self._start_final_index = None
+        self._end_final_index = -1
+        self._start_time = time.monotonic()
+        return snapshot
+
+    async def summarize_snapshot(
+        self,
+        snapshot: RealtimeSummarySnapshot,
+    ) -> tuple[str, list[str]]:
+        return await self._summary_service.summarize_with_keywords(snapshot.full_text)
 
     async def flush_with_summary(self) -> tuple[str, str, list[str], int, int]:
         """
