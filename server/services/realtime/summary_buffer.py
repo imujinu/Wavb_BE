@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from services.summary.summary_service import SummaryService
 
 
-DEFAULT_REALTIME_SUMMARY_THRESHOLD_SECONDS = 25.0
+DEFAULT_REALTIME_SUMMARY_THRESHOLD_SECONDS = 55.0
 
 
 @dataclass(frozen=True)

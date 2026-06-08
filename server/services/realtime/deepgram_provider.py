@@ -23,21 +23,25 @@ class DeepgramProvider(STTProvider):
     """
 
     _WS_URL = (
-        "wss://api.deepgram.com/v1/listen"
-        "?model=nova-3"
-        "&language=ko"
-        "&encoding=linear16"
-        "&sample_rate=16000"
-        "&channels=1"
-        "&punctuate=true"
-        "&interim_results=true"
-    )
+    "wss://api.deepgram.com/v1/listen"
+    "?model=nova-3"
+    "&language=ko"
+    "&encoding=linear16"
+    "&sample_rate=16000"
+    "&channels=1"
+    "&punctuate=true"
+    "&interim_results=true"
+    "&endpointing=1500"
+    "&utterance_end_ms=2000"
+    "&no_delay=true")
 
     def __init__(self) -> None:
         self._ws = None
         self._settings = get_settings()
-
+        
+    
     async def connect(self) -> None:
+        print(repr(self._WS_URL))
         headers = {"Authorization": f"Token {self._settings.deepgram_api_key}"}
         self._ws = await websockets.connect(
             self._WS_URL, additional_headers=headers
@@ -53,7 +57,8 @@ class DeepgramProvider(STTProvider):
             if isinstance(raw_msg, bytes):
                 # Deepgram이 간혹 binary keepalive를 전송합니다.
                 continue
-
+            print(f"[DG RAW] {raw_msg[:200]}")
+            
             msg = json.loads(raw_msg)
             if msg.get("type") != "Results":
                 continue
@@ -78,3 +83,6 @@ class DeepgramProvider(STTProvider):
             await self._ws.send(json.dumps({"type": "CloseStream"}))
             await self._ws.close()
             self._ws = None
+
+if __name__ == "__main__":
+    print(repr(DeepgramProvider._WS_URL))

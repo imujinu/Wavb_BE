@@ -133,6 +133,20 @@ class TranscriptIngestionService:
 
             _t0 = time.perf_counter()
             chunks = await self._run_pipeline(transcript_id, segments)
+            
+            # 3. 모든 파이프라인(STT, 청킹, 인덱싱)이 완료되었으므로 세부 상태를 completed로 갱신한다.
+            if user_id:
+                from schemas.rag import TranscriptProcessingStatusUpdate
+                await self._repository.update_processing_status(
+                    transcript_id,
+                    user_id,
+                    TranscriptProcessingStatusUpdate(
+                        status="completed",
+                        content_status="completed",
+                        index_status="completed",
+                    )
+                )
+
             logger.info(
                 "[timing] pipeline total: %.2fs  (segments=%d, chunks=%d)",
                 time.perf_counter() - _t0,
@@ -245,6 +259,19 @@ class TranscriptIngestionService:
                 ),
             )
             chunks = await self._run_pipeline(transcript_id, segments)
+
+            # 모든 파이프라인(청킹, 인덱싱)이 완료되었으므로 세부 상태를 completed로 갱신한다.
+            if user_id:
+                from schemas.rag import TranscriptProcessingStatusUpdate
+                await self._repository.update_processing_status(
+                    transcript_id,
+                    user_id,
+                    TranscriptProcessingStatusUpdate(
+                        status="completed",
+                        content_status="completed",
+                        index_status="completed",
+                    )
+                )
         except Exception as exc:
             await self._repository.update_transcript_result(
                 transcript_id,
