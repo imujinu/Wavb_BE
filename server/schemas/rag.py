@@ -397,6 +397,9 @@ class UploadedFileDetail(BaseModel):
     original_filename: str | None = None
     mime_type: str | None = None
     status: str
+    content_status: str = "pending"
+    index_status: str = "pending"
+    error_message: str | None = None
     created_at: Any | None = None
 
 

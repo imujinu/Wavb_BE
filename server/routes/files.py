@@ -44,6 +44,9 @@ class UploadedFileResponse(BaseModel):
     original_filename: str | None = None
     mime_type: str | None = None
     status: str
+    content_status: str
+    index_status: str
+    error_message: str | None = None
     created_at: str | None = None
 
 
@@ -163,6 +166,36 @@ async def upload_file(
         chunk_count=result.chunk_count,
         status=result.status,
     )
+
+
+@router.post("/{transcript_id}/content", response_model=FileProcessResponse)
+async def process_file_content(
+    transcript_id: UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+    processing_service: TranscriptProcessingService = Depends(
+        get_transcript_processing_service
+    ),
+) -> FileProcessResponse:
+    result = await processing_service.process_content(
+        transcript_id=transcript_id,
+        user_id=current_user.user_id,
+    )
+    return _to_file_process_response(result)
+
+
+@router.post("/{transcript_id}/index", response_model=FileProcessResponse)
+async def process_file_index(
+    transcript_id: UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+    processing_service: TranscriptProcessingService = Depends(
+        get_transcript_processing_service
+    ),
+) -> FileProcessResponse:
+    result = await processing_service.process_index(
+        transcript_id=transcript_id,
+        user_id=current_user.user_id,
+    )
+    return _to_file_process_response(result)
 
 
 @router.post("/{transcript_id}/process", response_model=FileProcessResponse)
@@ -300,6 +333,9 @@ def _to_uploaded_file_response(file: UploadedFileDetail) -> UploadedFileResponse
         original_filename=file.original_filename,
         mime_type=file.mime_type,
         status=file.status,
+        content_status=file.content_status,
+        index_status=file.index_status,
+        error_message=file.error_message,
         created_at=file.created_at.isoformat() if file.created_at else None,
     )
 

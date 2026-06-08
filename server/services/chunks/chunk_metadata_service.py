@@ -89,11 +89,8 @@ class ChunkMetadataService:
     ) -> tuple[int, ChunkCreate]:
         try:
             async with semaphore:
-                await raise_if_cancel_requested(cancellation_checker)
                 metadata = await self._create_metadata(chunk)
-                await raise_if_cancel_requested(cancellation_checker)
         except Exception:
-            await raise_if_cancel_requested(cancellation_checker)
             return index, chunk
 
         return index, self._apply_metadata(chunk, metadata)

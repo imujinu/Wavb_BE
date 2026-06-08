@@ -210,7 +210,8 @@ class RagRepository:
         rows = await self._connection.fetch(
             """
             SELECT id, title, source_audio_uri, original_filename,
-                   mime_type, status, created_at
+                   mime_type, status, content_status, index_status,
+                   error_message, created_at
             FROM transcripts
             WHERE user_id = $1
             ORDER BY created_at DESC
@@ -226,6 +227,9 @@ class RagRepository:
                 original_filename=row["original_filename"],
                 mime_type=row["mime_type"],
                 status=row["status"],
+                content_status=row["content_status"],
+                index_status=row["index_status"],
+                error_message=row["error_message"],
                 created_at=row["created_at"],
             )
             for row in rows
@@ -361,6 +365,26 @@ class RagRepository:
                     THEN cancelled_at
                   ELSE COALESCE(cancelled_at, now())
                 END,
+                updated_at = now()
+            WHERE id = $1 AND user_id = $2
+            RETURNING id
+            """,
+            transcript_id,
+            user_id,
+        )
+        return row is not None
+
+    async def reset_processing_cancellation(
+        self,
+        transcript_id: UUID,
+        user_id: UUID,
+    ) -> bool:
+        row = await self._connection.fetchrow(
+            """
+            UPDATE transcripts
+            SET cancel_requested_at = NULL,
+                cancelled_at = NULL,
+                error_message = NULL,
                 updated_at = now()
             WHERE id = $1 AND user_id = $2
             RETURNING id

@@ -200,6 +200,88 @@ def test_process_file_route_uses_authenticated_user() -> None:
     }
 
 
+def test_process_file_content_route_uses_authenticated_user() -> None:
+    fake_user_id = UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+    transcript_id = UUID("12121212-1212-1212-1212-121212121212")
+
+    class FakeProcessingService:
+        async def process_content(self, transcript_id: UUID, user_id: UUID):
+            assert transcript_id == UUID("12121212-1212-1212-1212-121212121212")
+            assert user_id == fake_user_id
+            return TranscriptProcessingResult(
+                transcript_id=transcript_id,
+                status="processing",
+                content_status="completed",
+                index_status="pending",
+                segment_count=3,
+                chunk_count=0,
+            )
+
+    def fake_current_user() -> CurrentUser:
+        return CurrentUser(user_id=fake_user_id, email="test@example.com")
+
+    app.dependency_overrides[get_current_user] = fake_current_user
+    app.dependency_overrides[files.get_transcript_processing_service] = (
+        lambda: FakeProcessingService()
+    )
+
+    try:
+        response = client.post(f"/files/{transcript_id}/content")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "transcript_id": str(transcript_id),
+        "status": "processing",
+        "content_status": "completed",
+        "index_status": "pending",
+        "segment_count": 3,
+        "chunk_count": 0,
+    }
+
+
+def test_process_file_index_route_uses_authenticated_user() -> None:
+    fake_user_id = UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+    transcript_id = UUID("13131313-1313-1313-1313-131313131313")
+
+    class FakeProcessingService:
+        async def process_index(self, transcript_id: UUID, user_id: UUID):
+            assert transcript_id == UUID("13131313-1313-1313-1313-131313131313")
+            assert user_id == fake_user_id
+            return TranscriptProcessingResult(
+                transcript_id=transcript_id,
+                status="completed",
+                content_status="completed",
+                index_status="completed",
+                segment_count=3,
+                chunk_count=1,
+            )
+
+    def fake_current_user() -> CurrentUser:
+        return CurrentUser(user_id=fake_user_id, email="test@example.com")
+
+    app.dependency_overrides[get_current_user] = fake_current_user
+    app.dependency_overrides[files.get_transcript_processing_service] = (
+        lambda: FakeProcessingService()
+    )
+
+    try:
+        response = client.post(f"/files/{transcript_id}/index")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "transcript_id": str(transcript_id),
+        "status": "completed",
+        "content_status": "completed",
+        "index_status": "completed",
+        "segment_count": 3,
+        "chunk_count": 1,
+    }
+
+
 def test_cancel_file_processing_route_uses_authenticated_user() -> None:
     fake_user_id = UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
     transcript_id = UUID("77777777-7777-7777-7777-777777777777")
@@ -257,6 +339,9 @@ def test_list_uploaded_files_returns_authenticated_user_files() -> None:
                     original_filename="lecture.pdf",
                     mime_type="application/pdf",
                     status="completed",
+                    content_status="completed",
+                    index_status="completed",
+                    error_message=None,
                     created_at=created_at,
                 )
             ]
@@ -281,6 +366,9 @@ def test_list_uploaded_files_returns_authenticated_user_files() -> None:
             "original_filename": "lecture.pdf",
             "mime_type": "application/pdf",
             "status": "completed",
+            "content_status": "completed",
+            "index_status": "completed",
+            "error_message": None,
             "created_at": "2026-06-05T12:00:00+00:00",
         }
     ]

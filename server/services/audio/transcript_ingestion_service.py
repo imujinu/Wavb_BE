@@ -199,6 +199,7 @@ class TranscriptIngestionService:
             user_id=user_id,
             source_uri="realtime://recording",
             source_type="audio",
+            mime_type="audio/webm",
         )
 
     # 실시간 녹음 세션에서 클라이언트가 전달한 segments로 transcript를 저장한다.
