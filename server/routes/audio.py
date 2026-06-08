@@ -21,6 +21,7 @@ from services.summary.templated_summary_service import TemplatedSummaryService
 from services.audio.transcript_ingestion_service import TranscriptIngestionService
 from services.audio.transcription_service import TranscriptionService
 from services.files.processing_cancellation import ProcessingCancelledError
+from services.files.upload_storage_service import UploadStorageService
 
 
 router = APIRouter(prefix="/audio", tags=["audio"])
@@ -99,11 +100,20 @@ async def create_audio_transcript(
 ) -> AudioTranscriptResponse:
     validate_audio_file(file)
 
+    # 1. 원본 파일을 서버 저장소에 저장하고 유효한 내부 URI를 생성한다.
+    # 클라이언트가 보낸 file_uri는 로컬 경로일 수 있으므로 신뢰하지 않고 새로 저장한다.
+    storage_service = UploadStorageService()
+    stored_upload = await storage_service.save_upload(
+        file,
+        file_name,
+        current_user.user_id,
+    )
+
     ingestion_service = TranscriptIngestionService(repository)
-    # 1. 인증된 사용자의 user_id를 토큰에서 주입하여 인제스션 실행
+    # 2. 저장된 URI를 사용하여 인제스션 실행
     result = await ingestion_service.ingest_upload(
         file=file,
-        file_uri=file_uri,
+        file_uri=stored_upload.uri,
         file_name=file_name,
         user_id=current_user.user_id,
     )

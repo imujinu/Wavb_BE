@@ -73,6 +73,7 @@ async def realtime_connect(
             status="uploaded",
             content_status="pending",
             index_status="pending",
+            mime_type="audio/webm",
         )
     )
 

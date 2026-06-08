@@ -244,6 +244,23 @@ async def test_repository_requests_processing_cancel_and_checks_flag() -> None:
 
 
 @pytest.mark.asyncio
+async def test_repository_resets_processing_cancellation() -> None:
+    connection = FakeConnection()
+    repository = RagRepository(connection)
+    transcript_id = uuid4()
+    user_id = uuid4()
+
+    updated = await repository.reset_processing_cancellation(transcript_id, user_id)
+
+    assert updated is True
+    sql, args = connection.executed[0]
+    assert "cancel_requested_at = NULL" in sql
+    assert "cancelled_at = NULL" in sql
+    assert "error_message = NULL" in sql
+    assert args == (transcript_id, user_id)
+
+
+@pytest.mark.asyncio
 async def test_repository_inserts_segments_and_chunks() -> None:
     connection = FakeConnection()
     repository = RagRepository(connection)
@@ -889,6 +906,42 @@ async def test_get_transcript_by_id_returns_none_when_missing() -> None:
 
 
 @pytest.mark.asyncio
+async def test_get_file_detail_by_id_maps_status_and_file_fields() -> None:
+    transcript_id = uuid4()
+    user_id = uuid4()
+    connection = FetchrowConnection({
+        "id": transcript_id,
+        "title": "lecture",
+        "source_audio_uri": "/uploads/user/lecture.pdf",
+        "original_filename": "lecture.pdf",
+        "mime_type": "application/pdf",
+        "source_type": "pdf",
+        "status": "completed",
+        "content_status": "completed",
+        "index_status": "completed",
+        "error_message": None,
+        "duration_seconds": 12.5,
+        "created_at": None,
+        "updated_at": None,
+    })
+    repository = RagRepository(connection)
+
+    detail = await repository.get_file_detail_by_id(transcript_id, user_id)
+
+    assert detail is not None
+    assert detail.transcript_id == transcript_id
+    assert detail.file_uri == "/uploads/user/lecture.pdf"
+    assert detail.source_type == "pdf"
+    assert detail.content_status == "completed"
+    assert detail.index_status == "completed"
+    assert abs(detail.duration_seconds - 12.5) < 1e-6
+    sql, args = connection.calls[0]
+    assert "WHERE id = $1 AND user_id = $2" in sql
+    assert "full_text" not in sql
+    assert args == (transcript_id, user_id)
+
+
+@pytest.mark.asyncio
 async def test_list_transcripts_by_user_filters_owner_and_orders_created_at() -> None:
     connection = FakeConnection()
     repository = RagRepository(connection)
@@ -901,6 +954,9 @@ async def test_list_transcripts_by_user_filters_owner_and_orders_created_at() ->
         "original_filename": "lecture.pdf",
         "mime_type": "application/pdf",
         "status": "completed",
+        "content_status": "completed",
+        "index_status": "completed",
+        "error_message": None,
         "created_at": None,
     }]]
 
@@ -913,9 +969,14 @@ async def test_list_transcripts_by_user_filters_owner_and_orders_created_at() ->
     assert files[0].original_filename == "lecture.pdf"
     assert files[0].mime_type == "application/pdf"
     assert files[0].status == "completed"
+    assert files[0].content_status == "completed"
+    assert files[0].index_status == "completed"
+    assert files[0].error_message is None
     sql, args = connection.fetch_calls[0]
     assert "WHERE user_id = $1" in sql
     assert "ORDER BY created_at DESC" in sql
+    assert "content_status" in sql
+    assert "index_status" in sql
     assert args == (user_id,)
 
 

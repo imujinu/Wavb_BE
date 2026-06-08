@@ -1,7 +1,9 @@
+import asyncio
 from pathlib import Path
 from uuid import uuid4
 
 import pytest
+from fastapi import HTTPException
 
 from schemas.rag import (
     ChunkCreate,
@@ -19,8 +21,9 @@ class FakeRepository:
         self.status_updates = []
         self.result_updates = []
         self.temporary_segments: list[TemporarySegmentDetail] = []
+        self.segments: list[SegmentCreate] = []
         self.saved_segment_count = 2
-        self.saved_chunk_count = 1
+        self.saved_chunk_count = 0
         self.cancel_requested = False
 
     async def get_transcript_for_processing(self, transcript_id, user_id):
@@ -71,17 +74,48 @@ class FakeRepository:
             and user_id == self.transcript.user_id
         )
 
+    async def reset_processing_cancellation(self, transcript_id, user_id):
+        if transcript_id == self.transcript.id and user_id == self.transcript.user_id:
+            self.cancel_requested = False
+            return True
+        return False
+
     async def list_temporary_segments(self, transcript_id):
         return self.temporary_segments
 
     async def fetch_segments_by_transcript(self, transcript_id):
-        return []
+        return self.segments
+
+    async def insert_segments(self, transcript_id, segments):
+        self.segments = list(segments)
+        self.saved_segment_count = len(self.segments)
 
     async def count_segments_by_transcript(self, transcript_id):
         return self.saved_segment_count
 
     async def count_chunks_by_transcript(self, transcript_id):
         return self.saved_chunk_count
+
+
+class ConcurrencySensitiveRepository(FakeRepository):
+    def __init__(self, transcript: TranscriptProcessingDetail) -> None:
+        super().__init__(transcript)
+        self.active_cancel_checks = 0
+        self.max_active_cancel_checks = 0
+
+    async def is_processing_cancel_requested(self, transcript_id, user_id):
+        self.active_cancel_checks += 1
+        self.max_active_cancel_checks = max(
+            self.max_active_cancel_checks,
+            self.active_cancel_checks,
+        )
+        if self.active_cancel_checks > 1:
+            raise AssertionError("cancel checks overlapped on one repository")
+        try:
+            await asyncio.sleep(0.01)
+            return await super().is_processing_cancel_requested(transcript_id, user_id)
+        finally:
+            self.active_cancel_checks -= 1
 
 
 class FakeUploadStorageService:
@@ -176,6 +210,122 @@ async def test_process_document_extracts_text_and_indexes() -> None:
 
 
 @pytest.mark.asyncio
+async def test_process_content_extracts_text_and_segments_without_indexing() -> None:
+    transcript = _make_transcript("pdf")
+    repository = FakeRepository(transcript)
+    extraction_service = FakeDocumentTextExtractionService()
+    ingestion_service = FakeTranscriptIngestionService()
+    service = TranscriptProcessingService(
+        repository=repository,
+        upload_storage_service=FakeUploadStorageService(),
+        document_text_extraction_service=extraction_service,
+        transcript_ingestion_service=ingestion_service,
+    )
+
+    result = await service.process_content(transcript.id, transcript.user_id)
+
+    assert result.status == "processing"
+    assert result.content_status == "completed"
+    assert result.index_status == "pending"
+    assert result.segment_count == 1
+    assert result.chunk_count == 0
+    assert repository.segments[0].source_page_start == 1
+    assert ingestion_service.index_calls == []
+
+
+@pytest.mark.asyncio
+async def test_process_index_requires_completed_content() -> None:
+    transcript = _make_transcript("pdf")
+    repository = FakeRepository(transcript)
+    service = TranscriptProcessingService(
+        repository=repository,
+        upload_storage_service=FakeUploadStorageService(),
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await service.process_index(transcript.id, transcript.user_id)
+
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.detail == "Content is not completed."
+
+
+@pytest.mark.asyncio
+async def test_process_index_uses_existing_segments() -> None:
+    transcript = _make_transcript("pdf").model_copy(
+        update={
+            "status": "processing",
+            "content_status": "completed",
+            "index_status": "pending",
+            "full_text": "saved text",
+        }
+    )
+    repository = FakeRepository(transcript)
+    repository.segments = [
+        SegmentCreate(
+            segment_index=0,
+            start_seconds=0.0,
+            end_seconds=1.0,
+            text="saved text",
+            source_type="pdf",
+            source_page_start=1,
+            source_page_end=1,
+        )
+    ]
+    ingestion_service = FakeTranscriptIngestionService()
+    service = TranscriptProcessingService(
+        repository=repository,
+        upload_storage_service=FakeUploadStorageService(),
+        transcript_ingestion_service=ingestion_service,
+    )
+
+    result = await service.process_index(transcript.id, transcript.user_id)
+
+    assert result.status == "completed"
+    assert result.content_status == "completed"
+    assert result.index_status == "completed"
+    assert ingestion_service.index_calls[0][1][0].text == "saved text"
+
+
+@pytest.mark.asyncio
+async def test_process_index_retries_cancelled_index_when_content_completed() -> None:
+    transcript = _make_transcript("pdf").model_copy(
+        update={
+            "status": "cancelled",
+            "content_status": "completed",
+            "index_status": "cancelled",
+            "full_text": "saved text",
+            "error_message": "Processing cancelled by user.",
+        }
+    )
+    repository = FakeRepository(transcript)
+    repository.cancel_requested = True
+    repository.segments = [
+        SegmentCreate(
+            segment_index=0,
+            start_seconds=0.0,
+            end_seconds=1.0,
+            text="saved text",
+            source_type="pdf",
+            source_page_start=1,
+            source_page_end=1,
+        )
+    ]
+    ingestion_service = FakeTranscriptIngestionService()
+    service = TranscriptProcessingService(
+        repository=repository,
+        upload_storage_service=FakeUploadStorageService(),
+        transcript_ingestion_service=ingestion_service,
+    )
+
+    result = await service.process_index(transcript.id, transcript.user_id)
+
+    assert result.status == "completed"
+    assert result.index_status == "completed"
+    assert repository.cancel_requested is False
+    assert len(ingestion_service.index_calls) == 1
+
+
+@pytest.mark.asyncio
 async def test_process_stops_before_content_when_cancel_requested() -> None:
     transcript = _make_transcript("pdf")
     repository = FakeRepository(transcript)
@@ -232,3 +382,20 @@ async def test_process_audio_uses_temporary_segments_before_stt() -> None:
     assert result.status == "completed"
     assert repository.result_updates[0][1].full_text == "실시간 전사"
     assert ingestion_service.index_calls[0][1][0].raw_metadata["provider"] == "deepgram"
+
+
+@pytest.mark.asyncio
+async def test_cancellation_checker_serializes_repository_access() -> None:
+    transcript = _make_transcript("pdf")
+    repository = ConcurrencySensitiveRepository(transcript)
+    service = TranscriptProcessingService(
+        repository=repository,
+        upload_storage_service=FakeUploadStorageService(),
+    )
+
+    checker = service._cancellation_checker(transcript.id, transcript.user_id)
+
+    results = await asyncio.gather(checker(), checker(), checker())
+
+    assert results == [False, False, False]
+    assert repository.max_active_cancel_checks == 1

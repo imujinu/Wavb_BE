@@ -59,27 +59,6 @@ class SummaryService:
         )
 
     async def summarize_with_keywords(self, transcript: str) -> tuple[str, list[str]]:
-        """
-        기능 요약: 요약문과 핵심 키워드를 한 번의 LLM 호출로 함께 추출한다.
-        — 실시간 전사 25초 구간(짧은 텍스트)용. 기존 summarize()는 다른 호출부가 있어 그대로 둔다.
-
-        단일 호출을 쓰는 이유:
-            25초 분량은 청킹이 불필요할 만큼 짧으므로, 요약과 키워드를 별도 호출로
-            두 번 부르는 대신 JSON 응답 하나로 받아 레이턴시·비용을 줄인다.
-
-        기능 흐름:
-            1. 빈 텍스트면 422 (summarize()와 동일 계약)
-            2. JSON 강제(response_format)로 {summary, keywords} 요청
-            3. 파싱 성공 시 (summary, keywords[:6]) 반환
-            4. 호출/파싱 실패 시 폴백 — 기존 summarize()로 요약만 만들고 keywords=[]
-               (키워드 추출 실패가 요약 자체를 막지 않도록)
-
-        파라미터:
-            transcript: 요약 대상 한국어 전사 텍스트
-
-        반환:
-            (summary, keywords) 튜플
-        """
         # 1. 빈 텍스트 가드 — 빈 입력으로 LLM을 호출하지 않는다.
         if not transcript.strip():
             raise HTTPException(
@@ -91,7 +70,7 @@ class SummaryService:
         prompt = (
             "다음 한국어 음성 전사 구간을 분석해 JSON만 출력하라.\n"
             '형식: {"summary": "2~3문장 한국어 요약", "keywords": ["핵심어", ...]}\n'
-            "- keywords는 3~6개, 전사에 실제 등장한 핵심 명사/개념만 담을 것.\n"
+            "- keywords는 2~3개, 전사에 실제 등장한 핵심 명사/개념만 담을 것.\n"
             "- 전사에 없는 내용을 지어내지 말 것."
         )
         try:

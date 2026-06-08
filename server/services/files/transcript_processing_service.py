@@ -1,3 +1,4 @@
+import asyncio
 from dataclasses import dataclass
 from pathlib import Path
 from uuid import UUID
@@ -67,15 +68,21 @@ class TranscriptProcessingService:
         transcript_id: UUID,
         user_id: UUID,
     ) -> TranscriptProcessingResult:
-        transcript = await self._repository.get_transcript_for_processing(
-            transcript_id,
-            user_id,
-        )
-        if transcript is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Transcript not found.",
-            )
+        transcript = await self._get_transcript_or_404(transcript_id, user_id)
+        if transcript.content_status != "completed":
+            content_result = await self.process_content(transcript_id, user_id)
+            if content_result.content_status != "completed":
+                return content_result
+        return await self.process_index(transcript_id, user_id)
+
+    async def process_content(
+        self,
+        transcript_id: UUID,
+        user_id: UUID,
+    ) -> TranscriptProcessingResult:
+        transcript = await self._get_transcript_or_404(transcript_id, user_id)
+        if transcript.content_status == "completed":
+            return await self._build_current_result(transcript.id, user_id)
 
         if transcript.status in {"cancel_requested", "cancelled"}:
             await self._mark_cancelled(
@@ -86,46 +93,67 @@ class TranscriptProcessingService:
             )
             return await self._build_current_result(transcript.id, user_id)
 
-        if transcript.index_status == "completed":
-            return TranscriptProcessingResult(
-                transcript_id=transcript.id,
-                status=transcript.status,
-                content_status=transcript.content_status,
-                index_status=transcript.index_status,
-                segment_count=await self._repository.count_segments_by_transcript(transcript.id),
-                chunk_count=await self._repository.count_chunks_by_transcript(transcript.id),
-            )
-
-        await self._set_status(
+        if await self._repository.is_processing_cancel_requested(
             transcript.id,
             user_id,
-            status_value="processing",
-            error_message=None,
-        )
+        ):
+            await self._mark_cancelled(
+                transcript.id,
+                user_id,
+                content_status="cancelled",
+                index_status="cancelled",
+            )
+            return await self._build_current_result(transcript.id, user_id)
 
-        if transcript.content_status == "completed":
-            content = await self._load_completed_content(transcript)
-        else:
-            try:
-                content = await self._prepare_content(transcript, user_id)
-            except ProcessingCancelledError:
-                return await self._build_current_result(transcript.id, user_id)
+        await self._reset_processing_cancellation(transcript.id, user_id)
+
+        try:
+            await self._prepare_content(transcript, user_id)
+        except ProcessingCancelledError:
+            return await self._build_current_result(transcript.id, user_id)
+
+        return await self._build_current_result(transcript.id, user_id)
+
+    async def process_index(
+        self,
+        transcript_id: UUID,
+        user_id: UUID,
+    ) -> TranscriptProcessingResult:
+        transcript = await self._get_transcript_or_404(transcript_id, user_id)
+        if transcript.content_status != "completed":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Content is not completed.",
+            )
+
+        if transcript.index_status == "completed":
+            return await self._build_current_result(transcript.id, user_id)
+
+        await self._reset_processing_cancellation(transcript.id, user_id)
+        content = await self._load_completed_content(transcript)
 
         try:
             await self._index_content(transcript.id, user_id, content.segments)
         except ProcessingCancelledError:
             return await self._build_current_result(transcript.id, user_id)
 
-        segment_count = await self._repository.count_segments_by_transcript(transcript.id)
-        chunk_count = await self._repository.count_chunks_by_transcript(transcript.id)
-        return TranscriptProcessingResult(
-            transcript_id=transcript.id,
-            status="completed",
-            content_status="completed",
-            index_status="completed",
-            segment_count=segment_count,
-            chunk_count=chunk_count,
+        return await self._build_current_result(transcript.id, user_id)
+
+    async def _get_transcript_or_404(
+        self,
+        transcript_id: UUID,
+        user_id: UUID,
+    ) -> TranscriptProcessingDetail:
+        transcript = await self._repository.get_transcript_for_processing(
+            transcript_id,
+            user_id,
         )
+        if transcript is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Transcript not found.",
+            )
+        return transcript
 
     async def cancel(
         self,
@@ -176,6 +204,7 @@ class TranscriptProcessingService:
                     status="processing",
                 ),
             )
+            await self._repository.insert_segments(transcript.id, content.segments)
             await self._set_status(
                 transcript.id,
                 user_id,
@@ -439,13 +468,25 @@ class TranscriptProcessingService:
         )
 
     def _cancellation_checker(self, transcript_id: UUID, user_id: UUID):
+        lock = asyncio.Lock()
+
         async def checker() -> bool:
-            return await self._repository.is_processing_cancel_requested(
-                transcript_id,
-                user_id,
-            )
+            async with lock:
+                return await self._repository.is_processing_cancel_requested(
+                    transcript_id,
+                    user_id,
+                )
 
         return checker
+
+    async def _reset_processing_cancellation(
+        self,
+        transcript_id: UUID,
+        user_id: UUID,
+    ) -> None:
+        reset = getattr(self._repository, "reset_processing_cancellation", None)
+        if reset is not None:
+            await reset(transcript_id, user_id)
 
     async def _raise_if_cancel_requested(
         self,
