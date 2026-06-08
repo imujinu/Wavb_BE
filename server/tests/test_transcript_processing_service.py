@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 from uuid import uuid4
 
@@ -82,6 +83,27 @@ class FakeRepository:
 
     async def count_chunks_by_transcript(self, transcript_id):
         return self.saved_chunk_count
+
+
+class ConcurrencySensitiveRepository(FakeRepository):
+    def __init__(self, transcript: TranscriptProcessingDetail) -> None:
+        super().__init__(transcript)
+        self.active_cancel_checks = 0
+        self.max_active_cancel_checks = 0
+
+    async def is_processing_cancel_requested(self, transcript_id, user_id):
+        self.active_cancel_checks += 1
+        self.max_active_cancel_checks = max(
+            self.max_active_cancel_checks,
+            self.active_cancel_checks,
+        )
+        if self.active_cancel_checks > 1:
+            raise AssertionError("cancel checks overlapped on one repository")
+        try:
+            await asyncio.sleep(0.01)
+            return await super().is_processing_cancel_requested(transcript_id, user_id)
+        finally:
+            self.active_cancel_checks -= 1
 
 
 class FakeUploadStorageService:
@@ -232,3 +254,20 @@ async def test_process_audio_uses_temporary_segments_before_stt() -> None:
     assert result.status == "completed"
     assert repository.result_updates[0][1].full_text == "실시간 전사"
     assert ingestion_service.index_calls[0][1][0].raw_metadata["provider"] == "deepgram"
+
+
+@pytest.mark.asyncio
+async def test_cancellation_checker_serializes_repository_access() -> None:
+    transcript = _make_transcript("pdf")
+    repository = ConcurrencySensitiveRepository(transcript)
+    service = TranscriptProcessingService(
+        repository=repository,
+        upload_storage_service=FakeUploadStorageService(),
+    )
+
+    checker = service._cancellation_checker(transcript.id, transcript.user_id)
+
+    results = await asyncio.gather(checker(), checker(), checker())
+
+    assert results == [False, False, False]
+    assert repository.max_active_cancel_checks == 1

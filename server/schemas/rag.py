@@ -370,6 +370,24 @@ class TranscriptDetail(BaseModel):
     created_at: Any | None = None
 
 
+class FileDetail(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    transcript_id: UUID
+    title: str | None = None
+    file_uri: str
+    original_filename: str | None = None
+    mime_type: str | None = None
+    source_type: SourceRangeType | None = None
+    status: str
+    content_status: str
+    index_status: str
+    error_message: str | None = None
+    duration_seconds: float | None = None
+    created_at: Any | None = None
+    updated_at: Any | None = None
+
+
 class UploadedFileDetail(BaseModel):
     model_config = ConfigDict(frozen=True)
 

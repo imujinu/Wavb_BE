@@ -6,6 +6,7 @@ from db.connection import DatabaseConnection
 from schemas.rag import (
     ChunkCreate,
     ChunkRow,
+    FileDetail,
     LectureSummaryCreate,
     LectureSummaryDetail,
     ParentChunkResult,
@@ -152,6 +153,45 @@ class RagRepository:
         )
 
     # 인증 사용자가 업로드한 원본 파일 목록을 최신순으로 조회한다.
+    async def get_file_detail_by_id(
+        self,
+        transcript_id: UUID,
+        user_id: UUID,
+    ) -> FileDetail | None:
+        row = await self._connection.fetchrow(
+            """
+            SELECT id, title, source_audio_uri, original_filename, mime_type,
+                   source_type, status, content_status, index_status,
+                   error_message, duration_seconds, created_at, updated_at
+            FROM transcripts
+            WHERE id = $1 AND user_id = $2
+            """,
+            transcript_id,
+            user_id,
+        )
+        if row is None:
+            return None
+
+        return FileDetail(
+            transcript_id=row["id"],
+            title=row["title"],
+            file_uri=row["source_audio_uri"],
+            original_filename=row["original_filename"],
+            mime_type=row["mime_type"],
+            source_type=row["source_type"],
+            status=row["status"],
+            content_status=row["content_status"],
+            index_status=row["index_status"],
+            error_message=row["error_message"],
+            duration_seconds=(
+                float(row["duration_seconds"])
+                if row["duration_seconds"] is not None
+                else None
+            ),
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+        )
+
     async def list_transcripts_by_user(
         self,
         user_id: UUID,

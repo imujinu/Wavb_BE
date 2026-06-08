@@ -1,7 +1,7 @@
 from collections.abc import AsyncIterator
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel
 
 from db.connection import DatabaseConnection, get_connection
@@ -9,7 +9,13 @@ from dependencies.auth import get_current_user
 from repositories.rag_repository import RagRepository
 from repositories.work_item_repository import WorkItemRepository
 from schemas.auth import CurrentUser
-from schemas.rag import UploadedFileDetail
+from schemas.rag import (
+    FileDetail,
+    LectureSummaryPayload,
+    LectureSummaryResponse,
+    SegmentCreate,
+    UploadedFileDetail,
+)
 from services.files.file_ingestion_service import FileIngestionService
 from services.files.transcript_processing_service import (
     TranscriptProcessingResult,
@@ -48,6 +54,47 @@ class FileProcessResponse(BaseModel):
     index_status: str
     segment_count: int
     chunk_count: int
+
+
+class FileDetailResponse(BaseModel):
+    transcript_id: UUID
+    title: str | None = None
+    file_uri: str
+    original_filename: str | None = None
+    mime_type: str | None = None
+    source_type: str | None = None
+    status: str
+    content_status: str
+    index_status: str
+    error_message: str | None = None
+    duration_seconds: float | None = None
+    segment_count: int
+    chunk_count: int
+    created_at: str | None = None
+    updated_at: str | None = None
+    summary: LectureSummaryResponse | None = None
+
+
+class FileTranscriptSegmentResponse(BaseModel):
+    segment_index: int
+    start_seconds: float
+    end_seconds: float
+    speaker_label: str | None = None
+    text: str
+    confidence: float | None = None
+    source_type: str | None = None
+    source_page_start: int | None = None
+    source_page_end: int | None = None
+    source_slide_start: int | None = None
+    source_slide_end: int | None = None
+    source_start_seconds: float | None = None
+    source_end_seconds: float | None = None
+
+
+class FileTranscriptResponse(BaseModel):
+    transcript_id: UUID
+    full_text: str | None = None
+    segments: list[FileTranscriptSegmentResponse]
 
 
 async def get_rag_repository(
@@ -190,6 +237,61 @@ async def list_uploaded_files(
     return [_to_uploaded_file_response(file) for file in files]
 
 
+@router.get("/{transcript_id}", response_model=FileDetailResponse)
+async def get_file_detail(
+    transcript_id: UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+    repository: RagRepository = Depends(get_rag_repository),
+) -> FileDetailResponse:
+    file = await repository.get_file_detail_by_id(
+        transcript_id,
+        current_user.user_id,
+    )
+    if file is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Transcript not found.",
+        )
+
+    segment_count = await repository.count_segments_by_transcript(transcript_id)
+    chunk_count = await repository.count_chunks_by_transcript(transcript_id)
+    summary = await repository.get_lecture_summary_by_transcript(
+        transcript_id,
+        current_user.user_id,
+    )
+
+    return _to_file_detail_response(
+        file,
+        segment_count=segment_count,
+        chunk_count=chunk_count,
+        summary=_to_lecture_summary_response(summary) if summary is not None else None,
+    )
+
+
+@router.get("/{transcript_id}/transcript", response_model=FileTranscriptResponse)
+async def get_file_transcript(
+    transcript_id: UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+    repository: RagRepository = Depends(get_rag_repository),
+) -> FileTranscriptResponse:
+    transcript = await repository.get_transcript_by_id(
+        transcript_id,
+        current_user.user_id,
+    )
+    if transcript is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Transcript not found.",
+        )
+
+    segments = await repository.fetch_segments_by_transcript(transcript_id)
+    return FileTranscriptResponse(
+        transcript_id=transcript_id,
+        full_text=transcript.full_text,
+        segments=[_to_transcript_segment_response(segment) for segment in segments],
+    )
+
+
 def _to_uploaded_file_response(file: UploadedFileDetail) -> UploadedFileResponse:
     return UploadedFileResponse(
         transcript_id=file.transcript_id,
@@ -210,4 +312,62 @@ def _to_file_process_response(result: TranscriptProcessingResult) -> FileProcess
         index_status=result.index_status,
         segment_count=result.segment_count,
         chunk_count=result.chunk_count,
+    )
+
+
+def _to_file_detail_response(
+    file: FileDetail,
+    *,
+    segment_count: int,
+    chunk_count: int,
+    summary: LectureSummaryResponse | None,
+) -> FileDetailResponse:
+    return FileDetailResponse(
+        transcript_id=file.transcript_id,
+        title=file.title,
+        file_uri=file.file_uri,
+        original_filename=file.original_filename,
+        mime_type=file.mime_type,
+        source_type=file.source_type,
+        status=file.status,
+        content_status=file.content_status,
+        index_status=file.index_status,
+        error_message=file.error_message,
+        duration_seconds=file.duration_seconds,
+        segment_count=segment_count,
+        chunk_count=chunk_count,
+        created_at=file.created_at.isoformat() if file.created_at else None,
+        updated_at=file.updated_at.isoformat() if file.updated_at else None,
+        summary=summary,
+    )
+
+
+def _to_lecture_summary_response(summary) -> LectureSummaryResponse:
+    payload = LectureSummaryPayload.model_validate(summary.payload)
+    return LectureSummaryResponse(
+        summary_id=summary.id,
+        transcript_id=summary.transcript_id,
+        overview=payload.overview,
+        contexts=payload.contexts,
+        keywords=payload.keywords,
+    )
+
+
+def _to_transcript_segment_response(
+    segment: SegmentCreate,
+) -> FileTranscriptSegmentResponse:
+    return FileTranscriptSegmentResponse(
+        segment_index=segment.segment_index,
+        start_seconds=segment.start_seconds,
+        end_seconds=segment.end_seconds,
+        speaker_label=segment.speaker_label,
+        text=segment.text,
+        confidence=segment.confidence,
+        source_type=segment.source_type,
+        source_page_start=segment.source_page_start,
+        source_page_end=segment.source_page_end,
+        source_slide_start=segment.source_slide_start,
+        source_slide_end=segment.source_slide_end,
+        source_start_seconds=segment.source_start_seconds,
+        source_end_seconds=segment.source_end_seconds,
     )

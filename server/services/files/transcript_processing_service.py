@@ -1,3 +1,4 @@
+import asyncio
 from dataclasses import dataclass
 from pathlib import Path
 from uuid import UUID
@@ -439,11 +440,14 @@ class TranscriptProcessingService:
         )
 
     def _cancellation_checker(self, transcript_id: UUID, user_id: UUID):
+        lock = asyncio.Lock()
+
         async def checker() -> bool:
-            return await self._repository.is_processing_cancel_requested(
-                transcript_id,
-                user_id,
-            )
+            async with lock:
+                return await self._repository.is_processing_cancel_requested(
+                    transcript_id,
+                    user_id,
+                )
 
         return checker
 

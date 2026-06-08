@@ -889,6 +889,42 @@ async def test_get_transcript_by_id_returns_none_when_missing() -> None:
 
 
 @pytest.mark.asyncio
+async def test_get_file_detail_by_id_maps_status_and_file_fields() -> None:
+    transcript_id = uuid4()
+    user_id = uuid4()
+    connection = FetchrowConnection({
+        "id": transcript_id,
+        "title": "lecture",
+        "source_audio_uri": "/uploads/user/lecture.pdf",
+        "original_filename": "lecture.pdf",
+        "mime_type": "application/pdf",
+        "source_type": "pdf",
+        "status": "completed",
+        "content_status": "completed",
+        "index_status": "completed",
+        "error_message": None,
+        "duration_seconds": 12.5,
+        "created_at": None,
+        "updated_at": None,
+    })
+    repository = RagRepository(connection)
+
+    detail = await repository.get_file_detail_by_id(transcript_id, user_id)
+
+    assert detail is not None
+    assert detail.transcript_id == transcript_id
+    assert detail.file_uri == "/uploads/user/lecture.pdf"
+    assert detail.source_type == "pdf"
+    assert detail.content_status == "completed"
+    assert detail.index_status == "completed"
+    assert abs(detail.duration_seconds - 12.5) < 1e-6
+    sql, args = connection.calls[0]
+    assert "WHERE id = $1 AND user_id = $2" in sql
+    assert "full_text" not in sql
+    assert args == (transcript_id, user_id)
+
+
+@pytest.mark.asyncio
 async def test_list_transcripts_by_user_filters_owner_and_orders_created_at() -> None:
     connection = FakeConnection()
     repository = RagRepository(connection)
