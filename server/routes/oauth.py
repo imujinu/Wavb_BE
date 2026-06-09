@@ -8,7 +8,11 @@ from services.auth.oauth_service import OAuthService
 router = APIRouter(prefix="/auth/oauth", tags=["oauth"])
 
 
-@router.post("/google", response_model=TokenResponse)
+@router.post(
+    "/google",
+    response_model=TokenResponse,
+    summary="Google OAuth 인가 코드로 로그인하고 JWT 토큰을 발급한다.",
+)
 async def google_login(
     request: OAuthLoginRequest,
     oauth_service: OAuthService = Depends(get_oauth_service),
@@ -17,7 +21,11 @@ async def google_login(
     return await oauth_service.login_with_google(code=request.code)
 
 
-@router.post("/kakao", response_model=TokenResponse)
+@router.post(
+    "/kakao",
+    response_model=TokenResponse,
+    summary="Kakao OAuth 인가 코드로 로그인하고 JWT 토큰을 발급한다.",
+)
 async def kakao_login(
     request: OAuthLoginRequest,
     oauth_service: OAuthService = Depends(get_oauth_service),
@@ -26,7 +34,11 @@ async def kakao_login(
     return await oauth_service.login_with_kakao(code=request.code)
 
 
-@router.post("/naver", response_model=TokenResponse)
+@router.post(
+    "/naver",
+    response_model=TokenResponse,
+    summary="Naver OAuth 인가 코드와 state로 로그인하고 JWT 토큰을 발급한다.",
+)
 async def naver_login(
     request: OAuthNaverLoginRequest,
     oauth_service: OAuthService = Depends(get_oauth_service),

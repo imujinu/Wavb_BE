@@ -17,8 +17,8 @@ class UserCreate(BaseModel):
 class UserLogin(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    email: EmailStr
-    password: str
+    email: EmailStr = "test@example.com"
+    password: str = "1234"
 
 
 # 로그인/토큰 갱신 성공 시 클라이언트에 반환하는 JWT 토큰 응답 모델.

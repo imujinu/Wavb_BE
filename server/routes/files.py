@@ -16,6 +16,7 @@ from schemas.rag import (
     SegmentCreate,
     UploadedFileDetail,
 )
+from services.summary.lecture_summary_service import LectureSummaryService
 from services.files.file_ingestion_service import FileIngestionService
 from services.files.transcript_processing_service import (
     TranscriptProcessingResult,
@@ -124,11 +125,16 @@ def get_transcript_processing_service(
 ) -> TranscriptProcessingService:
     return TranscriptProcessingService(repository)
 
+def get_lecture_summary_service(
+    repository: RagRepository = Depends(get_rag_repository),
+) -> LectureSummaryService:
+    return LectureSummaryService(repository)
 
 @router.post(
     "/upload",
     response_model=FileUploadResponse,
     response_model_exclude_none=True,
+    summary="PDF, PPT, PPTX, 오디오 파일을 업로드하고 텍스트 추출과 RAG 인덱싱을 시작한다.",
 )
 async def upload_file(
     file: UploadFile = File(...),
@@ -168,7 +174,11 @@ async def upload_file(
     )
 
 
-@router.post("/{transcript_id}/content", response_model=FileProcessResponse)
+@router.post(
+    "/{transcript_id}/content",
+    response_model=FileProcessResponse,
+    summary="업로드된 파일에서 텍스트 또는 전사 세그먼트를 추출한다.",
+)
 async def process_file_content(
     transcript_id: UUID,
     current_user: CurrentUser = Depends(get_current_user),
@@ -183,7 +193,11 @@ async def process_file_content(
     return _to_file_process_response(result)
 
 
-@router.post("/{transcript_id}/index", response_model=FileProcessResponse)
+@router.post(
+    "/{transcript_id}/index",
+    response_model=FileProcessResponse,
+    summary="추출된 텍스트를 RAG 검색용 chunk와 embedding으로 인덱싱한다.",
+)
 async def process_file_index(
     transcript_id: UUID,
     current_user: CurrentUser = Depends(get_current_user),
@@ -198,7 +212,11 @@ async def process_file_index(
     return _to_file_process_response(result)
 
 
-@router.post("/{transcript_id}/process", response_model=FileProcessResponse)
+@router.post(
+    "/{transcript_id}/process",
+    response_model=FileProcessResponse,
+    summary="업로드된 파일의 텍스트 추출과 RAG 인덱싱을 한 번에 처리한다.",
+)
 async def process_file(
     transcript_id: UUID,
     current_user: CurrentUser = Depends(get_current_user),
@@ -224,7 +242,11 @@ async def process_file(
     return _to_file_process_response(result)
 
 
-@router.post("/{transcript_id}/cancel", response_model=FileProcessResponse)
+@router.post(
+    "/{transcript_id}/cancel",
+    response_model=FileProcessResponse,
+    summary="진행 중인 파일 처리 작업에 취소 요청을 기록한다.",
+)
 async def cancel_file_processing(
     transcript_id: UUID,
     current_user: CurrentUser = Depends(get_current_user),
@@ -249,8 +271,39 @@ async def cancel_file_processing(
     )
     return _to_file_process_response(result)
 
+@router.post(
+    "/{transcript_id}/summary",
+    response_model=LectureSummaryResponse,
+    summary="저장된 transcript와 chunk를 바탕으로 강의 요약 데이터를 생성하거나 조회한다.",
+)
+async def create_lecture_summary(
+    transcript_id: UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+    summary_service: LectureSummaryService = Depends(get_lecture_summary_service),
+) -> LectureSummaryResponse:
+    """
+    기능 요약: 저장된 transcript와 chunk를 바탕으로 강의 요약 데이터 JSON을 생성하거나 기존 데이터를 반환한다.
 
-@router.get("", response_model=list[UploadedFileResponse])
+    기능 흐름:
+        1. LectureSummaryService.get_or_create_summary(...) 호출
+        2. 서비스 내부에서 소유권/상태/chunk 준비 여부를 검증
+        3. 기존 lecture_summaries가 있으면 재사용, 없으면 LLM 생성 후 저장
+
+    파라미터:
+        transcript_id: 요약할 transcript UUID
+    """
+    # 1. 인증 사용자 기준으로 강의 요약 데이터 생성/조회
+    return await summary_service.get_or_create_summary(
+        transcript_id,
+        current_user.user_id,
+    )
+
+
+@router.get(
+    "",
+    response_model=list[UploadedFileResponse],
+    summary="인증 사용자가 업로드한 파일 목록을 최신순으로 조회한다.",
+)
 async def list_uploaded_files(
     current_user: CurrentUser = Depends(get_current_user),
     repository: RagRepository = Depends(get_rag_repository),
@@ -270,7 +323,11 @@ async def list_uploaded_files(
     return [_to_uploaded_file_response(file) for file in files]
 
 
-@router.get("/{transcript_id}", response_model=FileDetailResponse)
+@router.get(
+    "/{transcript_id}",
+    response_model=FileDetailResponse,
+    summary="업로드 파일의 상세 정보와 처리 상태, 요약 정보를 조회한다.",
+)
 async def get_file_detail(
     transcript_id: UUID,
     current_user: CurrentUser = Depends(get_current_user),
@@ -301,7 +358,11 @@ async def get_file_detail(
     )
 
 
-@router.get("/{transcript_id}/transcript", response_model=FileTranscriptResponse)
+@router.get(
+    "/{transcript_id}/transcript",
+    response_model=FileTranscriptResponse,
+    summary="업로드 파일의 전체 transcript와 세그먼트 목록을 조회한다.",
+)
 async def get_file_transcript(
     transcript_id: UUID,
     current_user: CurrentUser = Depends(get_current_user),

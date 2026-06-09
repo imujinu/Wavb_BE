@@ -242,7 +242,11 @@ async def _send_summary(
             return
 
 
-@router.post("/transcripts/realtime", response_model=RealtimeSaveResponse)
+@router.post(
+    "/transcripts/realtime",
+    response_model=RealtimeSaveResponse,
+    summary="실시간 녹음 세션의 최종 세그먼트를 저장하고 RAG 인덱싱을 수행한다.",
+)
 async def save_realtime_transcript(
     body: RealtimeSaveRequest,
     current_user: CurrentUser = Depends(get_current_user),

@@ -11,7 +11,7 @@ from db.connection import DatabaseConnection, get_connection
 from dependencies.auth import get_current_user
 from repositories.rag_repository import RagRepository
 from schemas.auth import CurrentUser
-from schemas.rag import LectureSummaryResponse, SummaryDocumentCreate
+from schemas.rag import SummaryDocumentCreate
 from settings import get_settings
 from services.summary.pdf_templates import TemplateSpec, get_template, list_templates
 from services.summary.summary_pdf_service import SummaryPdfService
@@ -71,7 +71,11 @@ def validate_audio_file(file: UploadFile) -> None:
         )
 
 
-@router.post("/summarize", response_model=AudioSummaryResponse)
+@router.post(
+    "/summarize",
+    response_model=AudioSummaryResponse,
+    summary="오디오 파일을 즉시 전사하고 요약한다.",
+)
 async def summarize_audio(file: UploadFile = File(...)) -> AudioSummaryResponse:
     validate_audio_file(file)
 
@@ -89,7 +93,11 @@ async def summarize_audio(file: UploadFile = File(...)) -> AudioSummaryResponse:
     return AudioSummaryResponse(transcript=transcript, summary=summary)
 
 
-@router.post("/transcripts", response_model=AudioTranscriptResponse)
+@router.post(
+    "/transcripts",
+    response_model=AudioTranscriptResponse,
+    summary="오디오 파일을 저장하고 전사, 세그먼트, RAG 청크까지 생성한다.",include_in_schema=False
+)
 async def create_audio_transcript(
     file: UploadFile = File(...),
     file_uri: str = Form(...),
@@ -189,7 +197,11 @@ def _summary_cancellation_checker(
     return checker
 
 
-@router.get("/summary-templates", response_model=list[TemplateSpec])
+@router.get(
+    "/summary-templates",
+    response_model=list[TemplateSpec],
+    summary="사용 가능한 요약 PDF 템플릿 목록을 조회한다.", include_in_schema=False
+)
 def list_summary_templates() -> list[TemplateSpec]:
     """
     기능 요약: 사용 가능한 요약 PDF 폼(템플릿) 목록을 반환한다.
@@ -202,34 +214,13 @@ def list_summary_templates() -> list[TemplateSpec]:
     return list_templates()
 
 
+
+
+
 @router.post(
-    "/transcripts/{transcript_id}/summary",
-    response_model=LectureSummaryResponse,
+    "/transcripts/{transcript_id}/summary-pdf",
+    summary="저장된 transcript를 선택한 템플릿으로 요약해 PDF로 다운로드한다.", include_in_schema=False
 )
-async def create_lecture_summary(
-    transcript_id: UUID,
-    current_user: CurrentUser = Depends(get_current_user),
-    summary_service: LectureSummaryService = Depends(get_lecture_summary_service),
-) -> LectureSummaryResponse:
-    """
-    기능 요약: 저장된 transcript와 chunk를 바탕으로 강의 요약 데이터 JSON을 생성하거나 기존 데이터를 반환한다.
-
-    기능 흐름:
-        1. LectureSummaryService.get_or_create_summary(...) 호출
-        2. 서비스 내부에서 소유권/상태/chunk 준비 여부를 검증
-        3. 기존 lecture_summaries가 있으면 재사용, 없으면 LLM 생성 후 저장
-
-    파라미터:
-        transcript_id: 요약할 transcript UUID
-    """
-    # 1. 인증 사용자 기준으로 강의 요약 데이터 생성/조회
-    return await summary_service.get_or_create_summary(
-        transcript_id,
-        current_user.user_id,
-    )
-
-
-@router.post("/transcripts/{transcript_id}/summary-pdf")
 async def create_summary_pdf(
     transcript_id: UUID,
     request: SummaryPdfRequest,
@@ -336,7 +327,10 @@ async def create_summary_pdf(
     )
 
 
-@router.put("/summary-documents/{document_id}")
+@router.put(
+    "/summary-documents/{document_id}",
+    summary="저장된 요약 문서 payload를 수정하고 PDF를 다시 렌더링한다.",include_in_schema=False
+)
 async def update_summary_pdf(
     document_id: UUID,
     request: SummaryDocumentUpdateRequest,

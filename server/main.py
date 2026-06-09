@@ -22,7 +22,7 @@ logging.basicConfig(
 
 settings = get_settings()
 
-app = FastAPI(title="Recordoc Backend", version="0.1.0")
+app = FastAPI(title="Wavb Backend", version="0.1.0")
 Path(settings.upload_storage_dir).mkdir(parents=True, exist_ok=True)
 
 app.add_middleware(

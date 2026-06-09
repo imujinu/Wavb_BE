@@ -35,7 +35,11 @@ def get_work_item_service(
     return WorkItemService(repository)
 
 
-@router.post("/folders", response_model=FolderWorkItemResponse)
+@router.post(
+    "/folders",
+    response_model=FolderWorkItemResponse,
+    summary="인증 사용자의 루트 작업공간에 새 폴더를 생성한다.",
+)
 async def create_folder(
     request: FolderCreateRequest,
     current_user: CurrentUser = Depends(get_current_user),
@@ -55,7 +59,11 @@ async def create_folder(
     return await service.create_folder(current_user.user_id, request.name)
 
 
-@router.patch("/folders/{folder_id}", response_model=FolderWorkItemResponse)
+@router.patch(
+    "/folders/{folder_id}",
+    response_model=FolderWorkItemResponse,
+    summary="사용자 소유 폴더의 이름을 수정한다.",
+)
 async def update_folder(
     folder_id: UUID,
     request: FolderUpdateRequest,
@@ -65,7 +73,11 @@ async def update_folder(
     return await service.update_folder(folder_id, current_user.user_id, request.name)
 
 
-@router.delete("/folders/{folder_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/folders/{folder_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="사용자 소유 폴더를 삭제한다.",
+)
 async def delete_folder(
     folder_id: UUID,
     current_user: CurrentUser = Depends(get_current_user),
@@ -74,7 +86,11 @@ async def delete_folder(
     await service.delete_folder(folder_id, current_user.user_id)
 
 
-@router.get("/work-items", response_model=list[WorkItemResponse])
+@router.get(
+    "/work-items",
+    response_model=list[WorkItemResponse],
+    summary="인증 사용자의 루트 폴더와 파일 목록을 조회한다.",
+)
 async def list_work_items(
     current_user: CurrentUser = Depends(get_current_user),
     service: WorkItemService = Depends(get_work_item_service),
@@ -82,7 +98,11 @@ async def list_work_items(
     return await service.list_root_items(current_user.user_id)
 
 
-@router.get("/folders/{folder_id}/items", response_model=list[FileWorkItemResponse])
+@router.get(
+    "/folders/{folder_id}/items",
+    response_model=list[FileWorkItemResponse],
+    summary="지정한 폴더 안의 파일 목록을 조회한다.",
+)
 async def list_folder_items(
     folder_id: UUID,
     current_user: CurrentUser = Depends(get_current_user),
@@ -91,7 +111,11 @@ async def list_folder_items(
     return await service.list_folder_items(folder_id, current_user.user_id)
 
 
-@router.patch("/files/folder", status_code=status.HTTP_204_NO_CONTENT)
+@router.patch(
+    "/files/folder",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="선택한 파일들을 지정한 폴더로 이동한다.",
+)
 async def move_files_to_folder(
     request: MoveFilesRequest,
     current_user: CurrentUser = Depends(get_current_user),
@@ -104,7 +128,11 @@ async def move_files_to_folder(
     )
 
 
-@router.post("/folders/from-files", response_model=FolderWorkItemResponse)
+@router.post(
+    "/folders/from-files",
+    response_model=FolderWorkItemResponse,
+    summary="선택한 파일들을 담을 새 폴더를 생성한다.",
+)
 async def create_folder_from_files(
     request: CreateFolderFromFilesRequest,
     current_user: CurrentUser = Depends(get_current_user),
@@ -117,7 +145,11 @@ async def create_folder_from_files(
     )
 
 
-@router.patch("/work-items/reorder", status_code=status.HTTP_204_NO_CONTENT)
+@router.patch(
+    "/work-items/reorder",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="루트 또는 폴더 내부 작업 항목의 표시 순서를 변경한다.",
+)
 async def reorder_work_items(
     request: ReorderWorkItemsRequest,
     current_user: CurrentUser = Depends(get_current_user),

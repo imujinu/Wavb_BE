@@ -23,6 +23,7 @@ class RegisterResponse(BaseModel):
     "/register",
     response_model=RegisterResponse,
     status_code=status.HTTP_201_CREATED,
+    summary="이메일과 비밀번호로 새 사용자를 가입시킨다.",
 )
 async def register(
     body: UserCreate,
@@ -43,6 +44,7 @@ async def register(
     "/login",
     response_model=TokenResponse,
     status_code=status.HTTP_200_OK,
+    summary="이메일과 비밀번호를 검증하고 JWT 토큰을 발급한다.",
 )
 async def login(
     body: UserLogin,
@@ -58,6 +60,7 @@ async def login(
     "/refresh",
     response_model=TokenResponse,
     status_code=status.HTTP_200_OK,
+    summary="refresh token을 검증하고 새 JWT 토큰 쌍을 발급한다.",
 )
 def refresh(
     body: RefreshRequest,

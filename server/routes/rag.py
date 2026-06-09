@@ -47,7 +47,11 @@ def get_rerank_service() -> RerankService:
     return IdentityRerankService()
 
 
-@router.post("/query", response_model=RagQueryResponse)
+@router.post(
+    "/query",
+    response_model=RagQueryResponse,
+    summary="문서, 웹 또는 하이브리드 범위에서 RAG 검색을 수행하고 답변을 생성한다.",
+)
 async def rag_query(
     request: RagQueryRequest,
     current_user: CurrentUser = Depends(get_current_user),
