@@ -1,38 +1,49 @@
-# 실시간 녹음 파일 URI 저장 개선 계획
+# 실시간 녹음 저장 흐름을 파일 업로드 처리 모델로 통합
 
 ## Summary
-실시간 전사 녹음은 현재 `@siteed/audio-studio`를 스트리밍 전용으로 실행해서 녹음 파일이 생성되지 않고, 백엔드는 `source_audio_uri="realtime://recording"` placeholder만 저장한다. 녹음 종료 시 실제 WAV 파일을 생성하고 서버에 업로드한 뒤, 해당 실시간 transcript row의 `source_audio_uri`를 `/uploads/...` URI로 갱신한다.
+
+기존 `server/plan/summary/realtime_summary.md`는 실시간 녹음 파일 URI 저장에 초점이 있었지만, 현재 백엔드의 기준 흐름은 `/files/upload -> /files/{id}/content -> /files/{id}/index -> /files/{id}/summary`다. 실시간 녹음도 이 흐름과 같은 `transcripts`, `segments`, `chunks`, `lecture_summaries` 데이터 구조를 만들도록 통합한다. 목표는 업로드 파일과 실시간 녹음이 같은 요약 생성 기반 데이터를 사용하게 하는 것이다.
 
 ## Key Changes
-- 프론트 `useRealtimeTranscription`에서 `output.primary.enabled`를 `true`로 바꿔 WAV 파일을 생성하고, `stop()` 반환값에 `fileUri`, `filename`, `mimeType`, `durationMs`를 포함한다.
-- 프론트 `saveRealtimeTranscript` API를 `multipart/form-data`로 확장해 JSON segments와 녹음 파일을 함께 보낸다.
-- 백엔드 `POST /audio/transcripts/realtime`을 multipart 입력으로 변경한다:
-  - `file`: 녹음 WAV 파일
-  - `title`, `duration_seconds`, `segments`: 기존 실시간 저장 데이터
-- 백엔드는 `UploadStorageService.save_upload()`로 파일을 `/uploads/{user_id}/...`에 저장하고, `TranscriptIngestionService.ingest_realtime_segments()`에 `source_uri`, `original_filename`, `mime_type`을 넘긴다.
-- `ingest_realtime_segments()`는 더 이상 `realtime://recording`을 고정하지 않고 전달받은 서버 저장 URI를 `transcripts.source_audio_uri`에 저장한다.
-- 기존 WebSocket 연결 시 임시 transcript row 생성은 유지하되, 최종 저장 API가 만드는 transcript와 중복 저장되는 현재 구조는 별도 정리 대상이다. 이번 변경은 앱 목록/상세에서 최종 저장된 row가 실제 파일 URI를 갖게 하는 데 집중한다.
+
+- 실시간 녹음 종료 시 프론트는 WAV 파일을 생성하고, `multipart/form-data`로 `file`, `title`, `duration_seconds`, `segments`를 전송한다.
+- 백엔드는 `POST /audio/transcripts/realtime`를 특수 저장 API가 아니라 실시간 녹음용 업로드 어댑터로 재정의한다.
+- 실시간 저장 API는 `UploadStorageService.save_upload()`로 원본 녹음 파일을 `/uploads/{user_id}/...`에 저장하고, WebSocket 세션에서 만든 `transcripts` row를 업로드 파일과 같은 형태로 갱신한다.
+- 실시간에서 이미 받은 전사 `segments`는 OpenAI STT를 다시 돌리지 않고 공식 `segments`로 승격한다.
+- 이후 처리는 기존 공통 파이프라인을 사용한다.
+- 요약 생성은 기존 `/files/{transcript_id}/summary`의 `LectureSummaryService`를 그대로 사용한다.
 
 ## Public Interfaces
-- `RealtimeSaveRequest` JSON body 방식은 multipart 방식으로 대체한다.
-- `POST /audio/transcripts/realtime` 응답은 기존처럼 `transcript_id`, `segment_count`를 유지한다.
-- 파일 목록/상세 응답의 `file_uri`는 기존 매핑 그대로 `transcripts.source_audio_uri`에서 나오며, 이제 `/uploads/...wav`가 반환된다.
+
+- `POST /audio/transcripts/realtime` 입력은 multipart다.
+- 필드:
+  - `transcript_id`: WebSocket 세션에서 받은 id
+  - `file`: 녹음 WAV 파일
+  - `title`: 저장 제목
+  - `duration_seconds`: 녹음 길이
+  - `segments`: JSON 문자열 배열, 서버 `temporary_segments`가 없을 때 fallback
+- 응답은 기존 `transcript_id`, `segment_count`를 유지하고, `file_uri`, `status`, `content_status`, `index_status`를 추가한다.
+
+## Backend Flow
+
+1. WebSocket `ready`에서 만든 transcript row를 최종 row로 사용한다.
+2. 종료 API는 같은 `transcript_id`를 받아 원본 파일을 저장한다.
+3. 저장된 파일 URI, 원본 파일명, MIME type, duration, source type을 같은 row에 반영한다.
+4. 서버 `temporary_segments`가 있으면 이를 우선 사용한다.
+5. 서버 `temporary_segments`가 없으면 multipart `segments`를 temporary segment fallback으로 저장한다.
+6. `TranscriptProcessingService.process()`를 호출해 기존 `/files/*` 모델과 같은 content/index 파이프라인을 실행한다.
 
 ## Test Plan
-- 백엔드 unit test:
-  - realtime 저장 API가 업로드 파일을 저장하고 `source_audio_uri`에 `/uploads/...` URI를 넘기는지 검증
-  - 파일이 비어 있으면 400으로 실패하는지 검증
-  - segments가 기존처럼 `segments`, `chunks`, search index 파이프라인으로 전달되는지 기존 테스트 유지
-- 프론트 type/check:
-  - `stop()` 결과에 녹음 파일 URI가 없으면 저장 실패 Alert를 띄우는지 확인
-  - `saveRealtimeTranscript()`가 `FormData`에 file, title, duration_seconds, segments를 넣는지 확인
-- 수동 검증:
-  - 실시간 녹음 시작 → 전사 표시 → 저장
-  - DB `transcripts.source_audio_uri`가 `realtime://recording`이 아니라 `/uploads/{user_id}/{uuid}.wav`인지 확인
-  - 서버 upload 디렉터리에 실제 `.wav` 파일이 생성됐는지 확인
-  - 앱 작업 목록/상세에서 `file_uri`가 내려오는지 확인
+
+- 실시간 저장 API가 업로드 파일을 저장하고 같은 transcript row의 `source_audio_uri`를 `/uploads/...wav`로 채우는지 검증한다.
+- 서버 `temporary_segments`가 있으면 클라이언트 segments를 다시 저장하지 않는지 검증한다.
+- 서버 `temporary_segments`가 없으면 multipart `segments`를 fallback으로 저장하는지 검증한다.
+- 처리 후 `content_status="completed"`, `index_status="completed"`가 응답되는지 검증한다.
+- `/files/{transcript_id}/summary`가 chunk 기반 요약을 생성 가능한 상태인지 수동 검증한다.
 
 ## Assumptions
-- 사용자가 선택한 기본 방향은 “파일도 업로드”다.
-- 녹음 파일 포맷은 `@siteed/audio-studio` primary output의 WAV를 사용한다.
-- 실시간 STT는 지금처럼 WebSocket PCM 스트리밍을 계속 사용하고, 저장용 파일은 별도로 보관한다.
+
+- 요약 생성의 기준 데이터는 `transcripts + segments + chunks`이며, 실시간 녹음도 이 구조를 따른다.
+- 실시간 STT 결과를 신뢰하고, 저장 시 OpenAI STT를 다시 수행하지 않는다.
+- 저장용 원본 파일은 WAV를 기본 포맷으로 사용한다.
+- 구형 `/audio/transcripts` 업로드 API보다 `/files/*` 처리 모델을 통합 기준으로 삼는다.

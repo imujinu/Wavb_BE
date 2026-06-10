@@ -17,6 +17,7 @@ from schemas.rag import (
     SummaryDocumentDetail,
     TemporarySegmentCreate,
     TemporarySegmentDetail,
+    RealtimeRecordingSourceUpdate,
     TranscriptCreate,
     TranscriptDetail,
     TranscriptProcessingDetail,
@@ -326,6 +327,40 @@ class RagRepository:
             update.content_status,
             update.index_status,
             update.error_message,
+        )
+        return row is not None
+
+    async def update_realtime_recording_source(
+        self,
+        transcript_id: UUID,
+        user_id: UUID,
+        update: RealtimeRecordingSourceUpdate,
+    ) -> bool:
+        row = await self._connection.fetchrow(
+            """
+            UPDATE transcripts
+            SET title = $3,
+                source_audio_uri = $4,
+                original_filename = $5,
+                mime_type = $6,
+                duration_seconds = $7,
+                source_type = $8,
+                status = 'uploaded',
+                content_status = 'pending',
+                index_status = 'pending',
+                error_message = NULL,
+                updated_at = now()
+            WHERE id = $1 AND user_id = $2
+            RETURNING id
+            """,
+            transcript_id,
+            user_id,
+            update.title,
+            update.file_uri,
+            update.original_filename,
+            update.mime_type,
+            update.duration_seconds,
+            update.source_type,
         )
         return row is not None
 

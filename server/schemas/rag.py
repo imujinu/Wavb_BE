@@ -63,6 +63,17 @@ class TranscriptProcessingStatusUpdate(BaseModel):
     error_message: str | None = None
 
 
+class RealtimeRecordingSourceUpdate(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    title: str = Field(min_length=1)
+    file_uri: str = Field(min_length=1)
+    original_filename: str = Field(min_length=1)
+    mime_type: str | None = None
+    duration_seconds: float | None = Field(default=None, ge=0)
+    source_type: Literal["audio"] = "audio"
+
+
 class TemporarySegmentCreate(BaseModel):
     model_config = ConfigDict(frozen=True)
 

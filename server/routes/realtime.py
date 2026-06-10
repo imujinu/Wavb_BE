@@ -1,17 +1,40 @@
 import asyncio
+import json
 import logging
 from collections.abc import AsyncIterator
 from dataclasses import asdict
+from pathlib import Path
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    UploadFile,
+    WebSocket,
+    WebSocketDisconnect,
+    status,
+)
+from pydantic import ValidationError
 
 from db.connection import DatabaseConnection, get_connection
 from dependencies.auth import get_current_user
 from repositories.rag_repository import RagRepository
 from schemas.auth import CurrentUser
-from schemas.rag import TemporarySegmentCreate, TranscriptCreate
-from schemas.realtime import RealtimeSaveRequest, RealtimeSaveResponse, RealtimeSummaryEvent
-from services.audio.transcript_ingestion_service import TranscriptIngestionService
+from schemas.rag import (
+    RealtimeRecordingSourceUpdate,
+    TemporarySegmentCreate,
+    TranscriptCreate,
+)
+from schemas.realtime import (
+    RealtimeSaveResponse,
+    RealtimeSegmentInput,
+    RealtimeSummaryEvent,
+)
+from services.files.transcript_processing_service import TranscriptProcessingService
+from services.files.upload_storage_service import UploadStorageService
 from services.realtime.provider_factory import create_stt_provider
 from services.realtime.summary_buffer import (
     DEFAULT_REALTIME_SUMMARY_THRESHOLD_SECONDS,
@@ -29,6 +52,16 @@ async def get_rag_repository(
     connection: DatabaseConnection = Depends(get_connection),
 ) -> AsyncIterator[RagRepository]:
     yield RagRepository(connection)
+
+
+def get_upload_storage_service() -> UploadStorageService:
+    return UploadStorageService()
+
+
+def get_transcript_processing_service(
+    repository: RagRepository = Depends(get_rag_repository),
+) -> TranscriptProcessingService:
+    return TranscriptProcessingService(repository)
 
 
 @router.websocket("/realtime/connect")
@@ -248,22 +281,105 @@ async def _send_summary(
     summary="실시간 녹음 세션의 최종 세그먼트를 저장하고 RAG 인덱싱을 수행한다.",
 )
 async def save_realtime_transcript(
-    body: RealtimeSaveRequest,
+    transcript_id: UUID = Form(...),
+    file: UploadFile = File(...),
+    title: str = Form(...),
+    duration_seconds: float = Form(...),
+    segments: str = Form(default="[]"),
     current_user: CurrentUser = Depends(get_current_user),
     repository: RagRepository = Depends(get_rag_repository),
+    storage_service: UploadStorageService = Depends(get_upload_storage_service),
+    processing_service: TranscriptProcessingService = Depends(
+        get_transcript_processing_service
+    ),
 ) -> RealtimeSaveResponse:
     """
     실시간 녹음 세션 종료 후 전체 전사 결과를 DB에 저장합니다.
     TranscriptIngestionService를 통해 세그먼트 → 청크 → 임베딩 파이프라인을 실행합니다.
     """
-    ingestion_service = TranscriptIngestionService(repository=repository)
-    result = await ingestion_service.ingest_realtime_segments(
-        title=body.title,
-        duration_seconds=body.duration_seconds,
-        segments=[s.model_dump() for s in body.segments],
+    temporary_segments = await repository.list_temporary_segments(transcript_id)
+    parsed_segments: list[RealtimeSegmentInput] = []
+    if not temporary_segments:
+        parsed_segments = _parse_realtime_segments(segments)
+
+    if not temporary_segments and not parsed_segments:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Realtime segments are required.",
+        )
+
+    original_filename = _resolve_recording_file_name(file, title)
+    stored_upload = await storage_service.save_upload(
+        file,
+        original_filename,
+        current_user.user_id,
+    )
+    updated = await repository.update_realtime_recording_source(
+        transcript_id,
+        current_user.user_id,
+        RealtimeRecordingSourceUpdate(
+            title=title,
+            file_uri=stored_upload.uri,
+            original_filename=original_filename,
+            mime_type=file.content_type,
+            duration_seconds=duration_seconds,
+        ),
+    )
+    if not updated:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Transcript not found.",
+        )
+
+    if not temporary_segments:
+        for segment in parsed_segments:
+            await repository.insert_temporary_segment(
+                transcript_id,
+                TemporarySegmentCreate(
+                    segment_index=segment.segment_index,
+                    start_seconds=segment.start_seconds,
+                    end_seconds=segment.end_seconds,
+                    text=segment.text,
+                    raw_metadata={"source": "client_realtime_fallback"},
+                ),
+            )
+
+    result = await processing_service.process(
+        transcript_id=transcript_id,
         user_id=current_user.user_id,
     )
     return RealtimeSaveResponse(
-        transcript_id=str(result.transcript_id),
+        transcript_id=str(transcript_id),
         segment_count=result.segment_count,
+        file_uri=stored_upload.uri,
+        status=result.status,
+        content_status=result.content_status,
+        index_status=result.index_status,
     )
+
+
+def _parse_realtime_segments(raw_segments: str) -> list[RealtimeSegmentInput]:
+    try:
+        payload = json.loads(raw_segments)
+        if not isinstance(payload, list):
+            raise ValueError
+        return [RealtimeSegmentInput.model_validate(item) for item in payload]
+    except (json.JSONDecodeError, TypeError, ValueError, ValidationError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="segments must be a JSON array of realtime segment objects.",
+        ) from exc
+
+
+def _resolve_recording_file_name(file: UploadFile, title: str) -> str:
+    raw_name = (file.filename or "").strip()
+    safe_name = Path(raw_name).name if raw_name else ""
+    if safe_name:
+        return safe_name
+
+    safe_title = Path(title.strip() or "recording").name or "recording"
+    suffix = ".wav"
+    content_type = (file.content_type or "").lower()
+    if content_type == "audio/webm":
+        suffix = ".webm"
+    return f"{safe_title}{suffix}"

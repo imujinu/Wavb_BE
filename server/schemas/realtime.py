@@ -27,6 +27,10 @@ class RealtimeSaveRequest(BaseModel):
 class RealtimeSaveResponse(BaseModel):
     transcript_id: str
     segment_count: int
+    file_uri: str | None = None
+    status: str | None = None
+    content_status: str | None = None
+    index_status: str | None = None
 
 
 class RealtimeSummaryEvent(BaseModel):
