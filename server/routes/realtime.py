@@ -33,7 +33,6 @@ from schemas.realtime import (
     RealtimeSegmentInput,
     RealtimeSummaryEvent,
 )
-from services.files.transcript_processing_service import TranscriptProcessingService
 from services.files.upload_storage_service import UploadStorageService
 from services.realtime.provider_factory import create_stt_provider
 from services.realtime.summary_buffer import (
@@ -56,12 +55,6 @@ async def get_rag_repository(
 
 def get_upload_storage_service() -> UploadStorageService:
     return UploadStorageService()
-
-
-def get_transcript_processing_service(
-    repository: RagRepository = Depends(get_rag_repository),
-) -> TranscriptProcessingService:
-    return TranscriptProcessingService(repository)
 
 
 @router.websocket("/realtime/connect")
@@ -289,9 +282,6 @@ async def save_realtime_transcript(
     current_user: CurrentUser = Depends(get_current_user),
     repository: RagRepository = Depends(get_rag_repository),
     storage_service: UploadStorageService = Depends(get_upload_storage_service),
-    processing_service: TranscriptProcessingService = Depends(
-        get_transcript_processing_service
-    ),
 ) -> RealtimeSaveResponse:
     """
     실시간 녹음 세션 종료 후 전체 전사 결과를 DB에 저장합니다.
@@ -344,17 +334,15 @@ async def save_realtime_transcript(
                 ),
             )
 
-    result = await processing_service.process(
-        transcript_id=transcript_id,
-        user_id=current_user.user_id,
-    )
     return RealtimeSaveResponse(
         transcript_id=str(transcript_id),
-        segment_count=result.segment_count,
+        segment_count=(
+            len(temporary_segments) if temporary_segments else len(parsed_segments)
+        ),
         file_uri=stored_upload.uri,
-        status=result.status,
-        content_status=result.content_status,
-        index_status=result.index_status,
+        status="uploaded",
+        content_status="pending",
+        index_status="pending",
     )
 
 

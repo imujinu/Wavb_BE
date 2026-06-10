@@ -114,7 +114,8 @@ class WorkItemRepository:
         rows = await self._connection.fetch(
             """
             SELECT id, title, source_audio_uri, original_filename,
-                   mime_type, status, sort_order, created_at
+                   mime_type, status, content_status, index_status,
+                   sort_order, created_at
             FROM transcripts
             WHERE user_id = $1 AND folder_id IS NULL
             ORDER BY sort_order ASC, created_at DESC
@@ -131,7 +132,8 @@ class WorkItemRepository:
         rows = await self._connection.fetch(
             """
             SELECT id, title, source_audio_uri, original_filename,
-                   mime_type, status, sort_order, created_at
+                   mime_type, status, content_status, index_status,
+                   sort_order, created_at
             FROM transcripts
             WHERE user_id = $1 AND folder_id = $2
             ORDER BY sort_order ASC, created_at DESC
@@ -321,6 +323,8 @@ class WorkItemRepository:
             original_filename=row["original_filename"],
             mime_type=row["mime_type"],
             status=row["status"],
+            content_status=row["content_status"],
+            index_status=row["index_status"],
             sort_order=row["sort_order"],
             created_at=row["created_at"],
         )

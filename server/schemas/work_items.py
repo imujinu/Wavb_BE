@@ -84,6 +84,8 @@ class FileWorkItemRecord(BaseModel):
     original_filename: str | None = None
     mime_type: str | None = None
     status: str
+    content_status: str
+    index_status: str
     sort_order: int
     created_at: Any | None = None
 

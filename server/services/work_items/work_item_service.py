@@ -220,6 +220,8 @@ class WorkItemService:
             original_filename=file.original_filename,
             mime_type=file.mime_type,
             status=file.status,
+            content_status=file.content_status,
+            index_status=file.index_status,
             sort_order=file.sort_order,
             created_at=file.created_at,
         )

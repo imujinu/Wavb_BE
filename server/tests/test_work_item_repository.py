@@ -67,6 +67,8 @@ async def test_list_root_items_queries_owner_and_container() -> None:
             "original_filename": "lecture.pdf",
             "mime_type": "application/pdf",
             "status": "completed",
+            "content_status": "completed",
+            "index_status": "completed",
             "sort_order": 1,
             "created_at": None,
         }],
@@ -82,6 +84,8 @@ async def test_list_root_items_queries_owner_and_container() -> None:
     assert "WHERE user_id = $1" in folder_sql
     assert "ORDER BY sort_order ASC" in folder_sql
     assert "WHERE user_id = $1 AND folder_id IS NULL" in file_sql
+    assert "content_status" in file_sql
+    assert "index_status" in file_sql
     assert "ORDER BY sort_order ASC" in file_sql
     assert folder_args == (user_id,)
     assert file_args == (user_id,)

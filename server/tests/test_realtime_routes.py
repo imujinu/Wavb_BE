@@ -8,7 +8,6 @@ from main import app
 from routes import realtime
 from schemas.auth import CurrentUser
 from schemas.rag import TemporarySegmentDetail
-from services.files.transcript_processing_service import TranscriptProcessingResult
 from services.files.upload_storage_service import StoredUpload
 
 
@@ -25,22 +24,6 @@ class FakeStorageService:
             uri=f"/uploads/{user_id}/recording.wav",
             path=None,
             original_filename=file_name,
-        )
-
-
-class FakeProcessingService:
-    def __init__(self) -> None:
-        self.calls = []
-
-    async def process(self, transcript_id, user_id):
-        self.calls.append((transcript_id, user_id))
-        return TranscriptProcessingResult(
-            transcript_id=transcript_id,
-            status="completed",
-            content_status="completed",
-            index_status="completed",
-            segment_count=2,
-            chunk_count=1,
         )
 
 
@@ -77,7 +60,6 @@ def test_save_realtime_transcript_uses_existing_temporary_segments() -> None:
         ]
     )
     storage = FakeStorageService()
-    processing = FakeProcessingService()
 
     def fake_current_user() -> CurrentUser:
         return CurrentUser(user_id=user_id, email="test@example.com")
@@ -85,9 +67,6 @@ def test_save_realtime_transcript_uses_existing_temporary_segments() -> None:
     app.dependency_overrides[get_current_user] = fake_current_user
     app.dependency_overrides[realtime.get_rag_repository] = lambda: repository
     app.dependency_overrides[realtime.get_upload_storage_service] = lambda: storage
-    app.dependency_overrides[realtime.get_transcript_processing_service] = (
-        lambda: processing
-    )
 
     try:
         response = client.post(
@@ -106,16 +85,15 @@ def test_save_realtime_transcript_uses_existing_temporary_segments() -> None:
     assert response.status_code == 200
     assert response.json() == {
         "transcript_id": str(transcript_id),
-        "segment_count": 2,
+        "segment_count": 1,
         "file_uri": f"/uploads/{user_id}/recording.wav",
-        "status": "completed",
-        "content_status": "completed",
-        "index_status": "completed",
+        "status": "uploaded",
+        "content_status": "pending",
+        "index_status": "pending",
     }
     assert repository.inserted_temporary_segments == []
     assert repository.source_updates[0][2].file_uri == f"/uploads/{user_id}/recording.wav"
     assert repository.source_updates[0][2].original_filename == "recording.wav"
-    assert processing.calls == [(transcript_id, user_id)]
 
 
 def test_save_realtime_transcript_writes_client_segments_as_fallback() -> None:
@@ -123,7 +101,6 @@ def test_save_realtime_transcript_writes_client_segments_as_fallback() -> None:
     transcript_id = UUID("22222222-2222-2222-2222-222222222222")
     repository = FakeRealtimeRepository()
     storage = FakeStorageService()
-    processing = FakeProcessingService()
 
     def fake_current_user() -> CurrentUser:
         return CurrentUser(user_id=user_id, email="test@example.com")
@@ -131,9 +108,6 @@ def test_save_realtime_transcript_writes_client_segments_as_fallback() -> None:
     app.dependency_overrides[get_current_user] = fake_current_user
     app.dependency_overrides[realtime.get_rag_repository] = lambda: repository
     app.dependency_overrides[realtime.get_upload_storage_service] = lambda: storage
-    app.dependency_overrides[realtime.get_transcript_processing_service] = (
-        lambda: processing
-    )
 
     try:
         response = client.post(
@@ -165,6 +139,10 @@ def test_save_realtime_transcript_writes_client_segments_as_fallback() -> None:
         app.dependency_overrides.clear()
 
     assert response.status_code == 200
+    assert response.json()["segment_count"] == 2
+    assert response.json()["status"] == "uploaded"
+    assert response.json()["content_status"] == "pending"
+    assert response.json()["index_status"] == "pending"
     assert [item[1].text for item in repository.inserted_temporary_segments] == [
         "first",
         "second",
