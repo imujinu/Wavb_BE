@@ -1,3 +1,24 @@
+
+<table align="center">
+  <tr>
+    <td align="center">
+      <img src="https://github.com/user-attachments/assets/ec7f2bb2-7f08-4ff8-a2e0-073f491935c9" width="250" /><br/>
+      <b>로그인 화면</b>
+    </td>
+    <td width="30"></td>
+    <td align="center">
+      <img src="https://github.com/user-attachments/assets/c24fb1f0-6013-492a-9b25-bb935e60d117" width="250" /><br/>
+      <b>홈 화면</b>
+    </td>
+    <td width="30"></td>
+    <td align="center">
+      <img src="https://github.com/user-attachments/assets/776d0626-3c76-49e4-bc6f-340b0a47afe8" width="250" /><br/>
+      <b>실시간 녹음 화면</b>
+    </td>
+  </tr>
+</table>
+
+
 # 🐋 Wavb — 음성 기반 지식 관리 서비스
 
 > 강의를 실시간으로 녹음하고, 지식으로 변환하는 AI 튜터 앱
